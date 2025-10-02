@@ -36,6 +36,11 @@ class ModelManager:
         try:
             logger.info(f"Loading model: {settings.MODEL_NAME}")
 
+            # Prepare authentication token
+            token = settings.HUGGINGFACE_TOKEN if settings.HUGGINGFACE_TOKEN else None
+            if token:
+                logger.info("Using HuggingFace authentication token")
+
             # Configure quantization if needed
             quantization_config = None
             if settings.LOAD_IN_4BIT:
@@ -51,13 +56,15 @@ class ModelManager:
             # Load tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(
                 settings.MODEL_NAME,
-                trust_remote_code=True
+                trust_remote_code=True,
+                token=token
             )
 
             # Load model
             model_kwargs: Dict[str, Any] = {
                 "trust_remote_code": True,
                 "torch_dtype": torch.float16 if self.device != "cpu" else torch.float32,
+                "token": token
             }
 
             if quantization_config:

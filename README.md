@@ -1,6 +1,6 @@
 # Sahabat-9B API Endpoint
 
-A robust and maintainable FastAPI application for serving the Sahabat-9B language model with RAG (Retrieval-Augmented Generation) capabilities.
+A robust and maintainable FastAPI application for serving the **Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct** language model with RAG (Retrieval-Augmented Generation) capabilities.
 
 ## Features
 
@@ -55,13 +55,25 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
+5. **Set up HuggingFace token** (optional, but recommended):
+
+Get your token from [HuggingFace Settings](https://huggingface.co/settings/tokens) and add it to `.env`:
+
+```bash
+HUGGINGFACE_TOKEN=hf_your_token_here
+```
+
+This is required if the model is gated or you want to access private models.
+
 ## Configuration
 
 Key configuration options in `.env`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MODEL_NAME` | HuggingFace model name | `LocalDoc/Sahabat-9B` |
+| `MODEL_NAME` | HuggingFace model name | `Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct` |
+| `MODEL_MAX_LENGTH` | Maximum context length | `8192` |
+| `HUGGINGFACE_TOKEN` | HuggingFace API token | `` (optional) |
 | `DEVICE` | Device to use | `cuda` |
 | `LOAD_IN_4BIT` | Use 4-bit quantization | `false` |
 | `LOAD_IN_8BIT` | Use 8-bit quantization | `false` |

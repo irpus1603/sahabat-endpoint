@@ -20,11 +20,12 @@ class Settings(BaseSettings):
     WORKERS: int = 1
 
     # Model Settings
-    MODEL_NAME: str = "LocalDoc/Sahabat-9B"
-    MODEL_MAX_LENGTH: int = 4096
+    MODEL_NAME: str = "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct"
+    MODEL_MAX_LENGTH: int = 8192  # Gemma2 supports up to 8k context
     DEVICE: str = "cuda"  # or "cpu" or "mps" for Mac
     LOAD_IN_8BIT: bool = False
     LOAD_IN_4BIT: bool = False
+    HUGGINGFACE_TOKEN: str = ""  # HuggingFace API token for model downloads
 
     # Generation Settings
     DEFAULT_MAX_NEW_TOKENS: int = 512
