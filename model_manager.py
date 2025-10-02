@@ -57,14 +57,20 @@ class ModelManager:
             self.tokenizer = AutoTokenizer.from_pretrained(
                 settings.MODEL_NAME,
                 trust_remote_code=True,
-                token=token
+                token=token,
+                use_fast=True  # Use fast tokenizer for better performance
             )
+
+            # Set padding token if not set
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
 
             # Load model
             model_kwargs: Dict[str, Any] = {
                 "trust_remote_code": True,
                 "torch_dtype": torch.float16 if self.device != "cpu" else torch.float32,
-                "token": token
+                "token": token,
+                "low_cpu_mem_usage": True,  # Reduce CPU memory during loading
             }
 
             if quantization_config:
@@ -77,6 +83,17 @@ class ModelManager:
                 settings.MODEL_NAME,
                 **model_kwargs
             )
+
+            # Enable eval mode for inference (disables dropout)
+            self.model.eval()
+
+            # Enable Flash Attention 2 if available (significantly faster)
+            if hasattr(self.model.config, 'attn_implementation'):
+                try:
+                    self.model.config.attn_implementation = "flash_attention_2"
+                    logger.info("Flash Attention 2 enabled")
+                except Exception:
+                    logger.warning("Flash Attention 2 not available, using default attention")
 
             logger.info("Model loaded successfully")
 
@@ -124,6 +141,8 @@ class ModelManager:
                     do_sample=do_sample,
                     repetition_penalty=repetition_penalty,
                     pad_token_id=self.tokenizer.eos_token_id,
+                    use_cache=True,  # Enable KV cache for faster generation
+                    num_beams=1,  # Greedy decoding is faster
                 )
 
             generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -226,6 +245,8 @@ class ModelManager:
                     repetition_penalty=repetition_penalty,
                     pad_token_id=self.tokenizer.eos_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
+                    use_cache=True,  # Enable KV cache for faster generation
+                    num_beams=1,  # Greedy decoding is faster than beam search
                 )
 
             # Decode the generated text

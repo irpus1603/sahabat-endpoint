@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     LOAD_IN_8BIT: bool = False
     LOAD_IN_4BIT: bool = False
     HUGGINGFACE_TOKEN: str = ""  # HuggingFace API token for model downloads
+    USE_FLASH_ATTENTION: bool = True  # Enable Flash Attention 2 for faster inference
+    ENABLE_KV_CACHE: bool = True  # Enable KV cache for faster generation
 
     # Generation Settings
     DEFAULT_MAX_NEW_TOKENS: int = 512
