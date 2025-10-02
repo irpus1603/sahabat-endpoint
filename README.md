@@ -118,6 +118,56 @@ Response:
 }
 ```
 
+### Chat Completions (OpenAI-compatible)
+
+```bash
+POST /v1/chat/completions
+```
+
+Request:
+```json
+{
+  "model": "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant."
+    },
+    {
+      "role": "user",
+      "content": "Apa itu kecerdasan buatan?"
+    }
+  ],
+  "max_tokens": 1024,
+  "temperature": 0.3
+}
+```
+
+Response:
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1234567890,
+  "model": "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Kecerdasan buatan adalah..."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 25,
+    "completion_tokens": 150,
+    "total_tokens": 175
+  }
+}
+```
+
 ### Text Generation
 
 ```bash
@@ -227,6 +277,25 @@ Response:
 # Health check
 curl http://localhost:8000/health
 
+# Chat completions (OpenAI-compatible)
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a smart linguist."
+      },
+      {
+        "role": "user",
+        "content": "Evaluate this poem in Balinese language."
+      }
+    ],
+    "max_tokens": 1024,
+    "temperature": 0.3
+  }'
+
 # Generate text
 curl -X POST http://localhost:8000/api/v1/generate \
   -H "Content-Type: application/json" \
@@ -254,6 +323,21 @@ curl -X POST http://localhost:8000/api/v1/rag \
 
 ```python
 import requests
+
+# Chat completions
+response = requests.post(
+    "http://localhost:8000/v1/chat/completions",
+    json={
+        "model": "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Apa itu kecerdasan buatan?"}
+        ],
+        "max_tokens": 1024,
+        "temperature": 0.3
+    }
+)
+print(response.json())
 
 # Generate text
 response = requests.post(

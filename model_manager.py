@@ -159,6 +159,107 @@ class ModelManager:
             logger.error(f"Embedding generation failed: {str(e)}")
             raise
 
+    def chat_completion(
+        self,
+        messages: list[dict],
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+        top_p: float = 0.9,
+        top_k: int = 50,
+        repetition_penalty: float = 1.1,
+    ) -> Dict[str, Any]:
+        """
+        Generate chat completion from messages
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling
+            top_k: Top-k sampling
+            repetition_penalty: Repetition penalty
+
+        Returns:
+            Dict with generated_text, prompt_tokens, completion_tokens, finish_reason
+        """
+        if not self.model or not self.tokenizer:
+            raise RuntimeError("Model not loaded")
+
+        try:
+            # Format messages into a prompt using Gemma2 chat template
+            # If tokenizer has chat template, use it; otherwise format manually
+            if hasattr(self.tokenizer, 'apply_chat_template') and self.tokenizer.chat_template:
+                prompt = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            else:
+                # Manual formatting for Gemma2
+                prompt = ""
+                for msg in messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+
+                    if role == "system":
+                        prompt += f"<start_of_turn>user\n{content}<end_of_turn>\n"
+                    elif role == "user":
+                        prompt += f"<start_of_turn>user\n{content}<end_of_turn>\n"
+                    elif role == "assistant":
+                        prompt += f"<start_of_turn>model\n{content}<end_of_turn>\n"
+
+                # Add generation prompt
+                prompt += "<start_of_turn>model\n"
+
+            # Tokenize and generate
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            input_length = inputs.input_ids.shape[1]
+
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    do_sample=True,
+                    repetition_penalty=repetition_penalty,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
+
+            # Decode the generated text
+            full_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            output_length = outputs[0].shape[0]
+            tokens_generated = output_length - input_length
+
+            # Extract only the assistant's response
+            # Remove the prompt part
+            if full_text.startswith(prompt):
+                generated_text = full_text[len(prompt):].strip()
+            else:
+                # Fallback: try to extract after the last model turn marker
+                if "<start_of_turn>model\n" in full_text:
+                    parts = full_text.split("<start_of_turn>model\n")
+                    generated_text = parts[-1].strip()
+                    # Remove end marker if present
+                    if "<end_of_turn>" in generated_text:
+                        generated_text = generated_text.split("<end_of_turn>")[0].strip()
+                else:
+                    generated_text = full_text.strip()
+
+            return {
+                "generated_text": generated_text,
+                "prompt_tokens": input_length,
+                "completion_tokens": tokens_generated,
+                "total_tokens": output_length,
+                "finish_reason": "length" if tokens_generated >= max_tokens else "stop"
+            }
+
+        except Exception as e:
+            logger.error(f"Chat completion failed: {str(e)}")
+            raise
+
     def is_loaded(self) -> bool:
         """Check if model is loaded"""
         return self.model is not None and self.tokenizer is not None

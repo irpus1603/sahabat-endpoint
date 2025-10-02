@@ -16,7 +16,9 @@ from models import (
     GenerateRequest, GenerateResponse,
     EmbeddingRequest, EmbeddingResponse,
     ChunkRequest, ChunkResponse,
-    RAGRequest, RAGResponse
+    RAGRequest, RAGResponse,
+    ChatCompletionRequest, ChatCompletionResponse,
+    ChatCompletionChoice, ChatCompletionUsage, ChatMessage
 )
 from rag_utils import chunk_text, retrieve_relevant_documents, create_rag_prompt
 
@@ -279,6 +281,73 @@ async def rag_query(request: RAGRequest):
         )
 
 
+# OpenAI-compatible Chat Completions endpoint
+@app.post(
+    "/v1/chat/completions",
+    response_model=ChatCompletionResponse,
+    tags=["Chat Completions"]
+)
+async def chat_completions(request: ChatCompletionRequest):
+    """
+    OpenAI-compatible chat completions endpoint
+
+    - **model**: Model name (e.g., "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct")
+    - **messages**: List of messages with role (system/user/assistant) and content
+    - **max_tokens**: Maximum tokens to generate (default: 1024)
+    - **temperature**: Sampling temperature (default: 0.7)
+    - **top_p**: Nucleus sampling (default: 0.9)
+    - **top_k**: Top-k sampling (default: 50)
+    """
+    try:
+        import uuid
+        from datetime import datetime
+
+        # Convert Pydantic messages to dict format
+        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+
+        # Generate completion
+        result = model_manager.chat_completion(
+            messages=messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            top_k=request.top_k,
+            repetition_penalty=request.repetition_penalty
+        )
+
+        # Build OpenAI-compatible response
+        response = ChatCompletionResponse(
+            id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+            object="chat.completion",
+            created=int(datetime.now().timestamp()),
+            model=request.model,
+            choices=[
+                ChatCompletionChoice(
+                    index=0,
+                    message=ChatMessage(
+                        role="assistant",
+                        content=result["generated_text"]
+                    ),
+                    finish_reason=result["finish_reason"]
+                )
+            ],
+            usage=ChatCompletionUsage(
+                prompt_tokens=result["prompt_tokens"],
+                completion_tokens=result["completion_tokens"],
+                total_tokens=result["total_tokens"]
+            )
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Chat completion failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chat completion failed: {str(e)}"
+        )
+
+
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -290,6 +359,7 @@ async def root():
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
+            "chat_completions": "/v1/chat/completions",
             "generate": f"{settings.API_PREFIX}/generate",
             "embeddings": f"{settings.API_PREFIX}/embeddings",
             "chunk": f"{settings.API_PREFIX}/chunk",

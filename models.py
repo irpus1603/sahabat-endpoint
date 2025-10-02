@@ -127,3 +127,59 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     status_code: int
+
+
+# OpenAI-compatible Chat Completions models
+class ChatMessage(BaseModel):
+    """Chat message"""
+    role: str = Field(..., description="Role: system, user, or assistant")
+    content: str = Field(..., description="Message content")
+
+
+class ChatCompletionRequest(BaseModel):
+    """OpenAI-compatible chat completion request"""
+    model: str = Field(..., description="Model name")
+    messages: List[ChatMessage] = Field(..., min_length=1, description="List of messages")
+    max_tokens: Optional[int] = Field(1024, ge=1, le=4096, description="Maximum tokens to generate")
+    temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling temperature")
+    top_p: Optional[float] = Field(0.9, ge=0.0, le=1.0, description="Nucleus sampling")
+    top_k: Optional[int] = Field(50, ge=0, description="Top-k sampling")
+    stream: Optional[bool] = Field(False, description="Stream response")
+    repetition_penalty: Optional[float] = Field(1.1, ge=1.0, le=2.0, description="Repetition penalty")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "model": "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "Hello!"}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.3
+            }
+        }
+
+
+class ChatCompletionChoice(BaseModel):
+    """Chat completion choice"""
+    index: int
+    message: ChatMessage
+    finish_reason: str
+
+
+class ChatCompletionUsage(BaseModel):
+    """Token usage statistics"""
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ChatCompletionResponse(BaseModel):
+    """OpenAI-compatible chat completion response"""
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: List[ChatCompletionChoice]
+    usage: ChatCompletionUsage
