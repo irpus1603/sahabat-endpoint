@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     ENABLE_KV_CACHE: bool = True  # Enable KV cache for faster generation
 
     # Generation Settings
-    DEFAULT_MAX_NEW_TOKENS: int = 512
+    DEFAULT_MAX_NEW_TOKENS: int = 2000
     DEFAULT_TEMPERATURE: float = 0.7
     DEFAULT_TOP_P: float = 0.9
     DEFAULT_TOP_K: int = 50

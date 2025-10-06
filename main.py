@@ -312,7 +312,9 @@ async def chat_completions(request: ChatCompletionRequest):
             temperature=request.temperature,
             top_p=request.top_p,
             top_k=request.top_k,
-            repetition_penalty=request.repetition_penalty
+            repetition_penalty=request.repetition_penalty,
+            stream=request.stream,
+            stream_options=request.stream_options
         )
 
         # Build OpenAI-compatible response

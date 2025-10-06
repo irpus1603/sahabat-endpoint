@@ -145,6 +145,7 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = Field(0.9, ge=0.0, le=1.0, description="Nucleus sampling")
     top_k: Optional[int] = Field(50, ge=0, description="Top-k sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
+    stream_options: Optional[bool] = Field(True, description="Stream options")
     repetition_penalty: Optional[float] = Field(1.1, ge=1.0, le=2.0, description="Repetition penalty")
 
     class Config:

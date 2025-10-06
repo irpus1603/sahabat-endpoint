@@ -186,6 +186,8 @@ class ModelManager:
         top_p: float = 0.9,
         top_k: int = 50,
         repetition_penalty: float = 1.1,
+        stream: bool = False,
+        stream_options: bool = True,
     ) -> Dict[str, Any]:
         """
         Generate chat completion from messages
@@ -197,6 +199,8 @@ class ModelManager:
             top_p: Nucleus sampling
             top_k: Top-k sampling
             repetition_penalty: Repetition penalty
+            stream: Whether to stream the response
+            stream_options: Stream options
 
         Returns:
             Dict with generated_text, prompt_tokens, completion_tokens, finish_reason
