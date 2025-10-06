@@ -3,9 +3,10 @@ FastAPI application for Sahabat-9B model endpoint
 """
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
 import time
+import json
 from typing import Dict, Any
 
 from config import get_settings
@@ -284,7 +285,6 @@ async def rag_query(request: RAGRequest):
 # OpenAI-compatible Chat Completions endpoint
 @app.post(
     "/v1/chat/completions",
-    response_model=ChatCompletionResponse,
     tags=["Chat Completions"]
 )
 async def chat_completions(request: ChatCompletionRequest):
@@ -297,6 +297,7 @@ async def chat_completions(request: ChatCompletionRequest):
     - **temperature**: Sampling temperature (default: 0.7)
     - **top_p**: Nucleus sampling (default: 0.9)
     - **top_k**: Top-k sampling (default: 50)
+    - **stream**: Enable streaming response (default: false)
     """
     try:
         import uuid
@@ -305,7 +306,74 @@ async def chat_completions(request: ChatCompletionRequest):
         # Convert Pydantic messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 
-        # Generate completion
+        # Debug logging
+        logger.info(f"Stream parameter received: {request.stream}")
+        logger.info(f"Stream type: {type(request.stream)}")
+
+        # Handle streaming
+        if request.stream:
+            async def generate_stream():
+                chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+                try:
+                    for token in model_manager.chat_completion_stream(
+                        messages=messages,
+                        max_tokens=request.max_tokens,
+                        temperature=request.temperature,
+                        top_p=request.top_p,
+                        top_k=request.top_k,
+                        repetition_penalty=request.repetition_penalty
+                    ):
+                        chunk = {
+                            "id": chunk_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(datetime.now().timestamp()),
+                            "model": request.model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": token},
+                                    "finish_reason": None
+                                }
+                            ]
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+
+                    # Send final chunk with finish_reason
+                    final_chunk = {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(datetime.now().timestamp()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop"
+                            }
+                        ]
+                    }
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    logger.error(f"Streaming failed: {str(e)}")
+                    error_chunk = {
+                        "error": {
+                            "message": str(e),
+                            "type": "server_error"
+                        }
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+
+        # Non-streaming response
         result = model_manager.chat_completion(
             messages=messages,
             max_tokens=request.max_tokens,
@@ -313,7 +381,7 @@ async def chat_completions(request: ChatCompletionRequest):
             top_p=request.top_p,
             top_k=request.top_k,
             repetition_penalty=request.repetition_penalty,
-            stream=request.stream,
+            stream=False,
             stream_options=request.stream_options
         )
 

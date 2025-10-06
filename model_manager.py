@@ -2,9 +2,10 @@
 Model loading and management
 """
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer
 from sentence_transformers import SentenceTransformer
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Generator
+from threading import Thread
 from config import get_settings
 from logger import setup_logger
 
@@ -176,6 +177,96 @@ class ModelManager:
             return embeddings.tolist()
         except Exception as e:
             logger.error(f"Embedding generation failed: {str(e)}")
+            raise
+
+    def chat_completion_stream(
+        self,
+        messages: list[dict],
+        max_tokens: Optional[int] = 1024,
+        temperature: Optional[float] = 0.7,
+        top_p: Optional[float] = 0.9,
+        top_k: Optional[int] = 50,
+        repetition_penalty: Optional[float] = 1.1,
+    ) -> Generator[str, None, None]:
+        """
+        Generate streaming chat completion from messages
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling
+            top_k: Top-k sampling
+            repetition_penalty: Repetition penalty
+
+        Yields:
+            Generated text tokens as they are produced
+        """
+        if not self.model or not self.tokenizer:
+            raise RuntimeError("Model not loaded")
+
+        try:
+            # Format messages into a prompt
+            if hasattr(self.tokenizer, 'apply_chat_template') and self.tokenizer.chat_template:
+                prompt = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            else:
+                # Manual formatting for Gemma2
+                prompt = ""
+                for msg in messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+
+                    if role == "system":
+                        prompt += f"<start_of_turn>user\n{content}<end_of_turn>\n"
+                    elif role == "user":
+                        prompt += f"<start_of_turn>user\n{content}<end_of_turn>\n"
+                    elif role == "assistant":
+                        prompt += f"<start_of_turn>model\n{content}<end_of_turn>\n"
+
+                prompt += "<start_of_turn>model\n"
+
+            # Tokenize
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+            # Create streamer
+            streamer = TextIteratorStreamer(
+                self.tokenizer,
+                skip_prompt=True,
+                skip_special_tokens=True
+            )
+
+            # Generation kwargs
+            generation_kwargs = {
+                **inputs,
+                "max_new_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "do_sample": True,
+                "repetition_penalty": repetition_penalty,
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "use_cache": True,
+                "num_beams": 1,
+                "streamer": streamer,
+            }
+
+            # Start generation in a separate thread
+            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
+            thread.start()
+
+            # Yield tokens as they are generated
+            for text in streamer:
+                yield text
+
+            thread.join()
+
+        except Exception as e:
+            logger.error(f"Streaming chat completion failed: {str(e)}")
             raise
 
     def chat_completion(
