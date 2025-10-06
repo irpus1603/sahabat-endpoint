@@ -157,7 +157,9 @@ class ChatCompletionRequest(BaseModel):
                     {"role": "user", "content": "Hello!"}
                 ],
                 "max_tokens": 1024,
-                "temperature": 0.3
+                "temperature": 0.3,
+                "stream": False,
+                "stream_options": True
             }
         }
 
