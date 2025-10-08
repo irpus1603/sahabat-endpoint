@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sahabat-endpoint
+  labels:
+    app: sahabat-endpoint
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sahabat-endpoint
+  template:
+    metadata:
+      labels:
+        app: sahabat-endpoint
+        version: v1
+    spec:
+      containers:
+      - name: sahabat-endpoint
+        image: sahabat-endpoint:latest  # Update this with your image registry path
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9000
+          protocol: TCP
+        env:
+        # API Settings
+        - name: APP_NAME
+          value: "Sahabat-9B API"
+        - name: APP_VERSION
+          value: "1.0.0"
+        - name: API_PREFIX
+          value: "/api/v1"
+        - name: DEBUG
+          value: "false"
+
+        # Server Settings
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "9000"
+        - name: WORKERS
+          value: "1"
+
+        # Model Settings
+        - name: MODEL_NAME
+          value: "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct"
+        - name: MODEL_MAX_LENGTH
+          value: "8192"
+        - name: DEVICE
+          value: "cpu"  # Change to "cuda" if using GPU nodes
+        - name: LOAD_IN_8BIT
+          value: "false"
+        - name: LOAD_IN_4BIT
+          value: "false"
+        - name: USE_FLASH_ATTENTION
+          value: "false"  # Set to true if using GPU
+        - name: ENABLE_KV_CACHE
+          value: "true"
+
+        # Generation Settings
+        - name: DEFAULT_MAX_NEW_TOKENS
+          value: "2000"
+        - name: DEFAULT_TEMPERATURE
+          value: "0.7"
+        - name: DEFAULT_TOP_P
+          value: "0.9"
+        - name: DEFAULT_TOP_K
+          value: "50"
+
+        # RAG Settings
+        - name: EMBEDDING_MODEL
+          value: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        - name: CHUNK_SIZE
+          value: "512"
+        - name: CHUNK_OVERLAP
+          value: "50"
+
+        # Rate Limiting
+        - name: RATE_LIMIT_ENABLED
+          value: "true"
+        - name: MAX_REQUESTS_PER_MINUTE
+          value: "60"
+
+        # Logging
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: LOG_FORMAT
+          value: "json"
+
+        # HuggingFace Token (use secret for production)
+        - name: HUGGINGFACE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sahabat-secrets
+              key: huggingface-token
+              optional: true
+
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        volumeMounts:
+        - name: cache
+          mountPath: /root/.cache
+
+      volumes:
+      - name: cache
+        emptyDir: {}
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001

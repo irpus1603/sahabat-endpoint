@@ -1,19 +1,19 @@
 # Core dependencies
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
 
 # ML/AI dependencies
-torch>=2.1.0
-transformers>=4.36.0
-sentence-transformers>=2.3.1
-accelerate>=0.25.0
-bitsandbytes>=0.41.3
+torch
+transformers
+sentence-transformers
+accelerate
+bitsandbytes
 
 # Utilities
-numpy>=1.24.0
-python-dotenv==1.0.0
+numpy
+python-dotenv
 
 # Optional: For better performance
-# nvidia-cuda-runtime-cu12  # Uncomment if using CUDA 12
+nvidia-cuda-runtime-cu12  # Uncomment if using CUDA 12

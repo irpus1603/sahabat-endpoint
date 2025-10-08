@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
+
+# Cache and logs
+*.log
+.cache/
+pip-log.txt
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache (downloaded models will be in container)
+models/
+checkpoints/

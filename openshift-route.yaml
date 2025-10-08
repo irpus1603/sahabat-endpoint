@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sahabat-endpoint
+  labels:
+    app: sahabat-endpoint
+spec:
+  to:
+    kind: Service
+    name: sahabat-endpoint
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
