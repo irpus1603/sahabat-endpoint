@@ -48,7 +48,7 @@ spec:
         - name: MODEL_MAX_LENGTH
           value: "8192"
         - name: DEVICE
-          value: "cpu"  # Change to "cuda" if using GPU nodes
+          value: "cuda"  # Change to "cuda" if using GPU nodes
         - name: LOAD_IN_8BIT
           value: "false"
         - name: LOAD_IN_4BIT
