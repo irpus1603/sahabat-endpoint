@@ -1,0 +1,4 @@
+2025-06-25 05:42:46,713 - video_processor.video_processor_standalone - INFO - Configuration loaded - Sensitivity: 0.7
+2025-06-25 05:42:46,713 - video_processor.video_processor_standalone - INFO - Detection model initialized (placeholder)
+2025-06-25 05:42:46,713 - video_processor.video_processor_standalone - INFO - SOCA Edge Video Processor initialized
+2025-06-25 05:42:46,714 - video_processor.video_processor_standalone - INFO - Loaded 4 active cameras

@@ -1,0 +1,261 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Add Camera - SOCA Edge{% endblock %}
+
+{% block page_title %}Add Camera{% endblock %}
+{% block page_subtitle %}Configure new camera{% endblock %}
+
+{% block content %}
+<!-- Django Messages -->
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle{% elif message.tags == 'success' %}check-circle{% elif message.tags == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Camera Configuration</h5>
+            </div>
+            <form method="post">
+                {% csrf_token %}
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Camera Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" required placeholder="e.g., Front-Door-Camera" id="cameraName" onblur="validateInput(this)">
+                            <div class="form-text">Enter a descriptive name for this camera (don't use spaces)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="is_active">
+                                <option value="true" selected>Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                            <div class="form-text">Camera will be enabled upon creation if Active</div>
+                        </div>
+                        
+                        <!-- Location Information Section -->
+                        <div class="col-12">
+                            <hr class="my-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-geo-alt me-2"></i>Location Information
+                            </h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Site Name</label>
+                            <input type="text" class="form-control" name="site_name" placeholder="e.g., Main Office, Warehouse A">
+                            <div class="form-text">Enter the site or building name</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Floor</label>
+                            <input type="text" class="form-control" name="floor" placeholder="e.g., Ground Floor, 2nd Floor, Basement">
+                            <div class="form-text">Specify the floor level</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Location Description</label>
+                            <input type="text" class="form-control" name="location" placeholder="e.g., Main Entrance, Production Area, Parking Lot">
+                            <div class="form-text">Detailed location description within the site</div>
+                        </div>
+                        
+                        <!-- Camera Configuration Section -->
+                        <div class="col-12">
+                            <hr class="my-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-camera me-2"></i>Camera Configuration
+                            </h6>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">RTSP URL <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="rtsp_url" required placeholder="rtsp://192.168.1.100:554/stream">
+                            <div class="form-text">
+                                Enter the complete RTSP stream URL for this camera. 
+                                <a href="#" data-bs-toggle="collapse" data-bs-target="#urlExamples">View examples</a>
+                            </div>
+                            <div class="collapse mt-2" id="urlExamples">
+                                <div class="alert alert-info">
+                                    <h6>Common RTSP URL Formats:</h6>
+                                    <ul class="mb-0">
+                                        <li><code>rtsp://192.168.1.100:554/stream</code> - Basic format</li>
+                                        <li><code>rtsp://admin:password@192.168.1.100:554/stream</code> - With authentication</li>
+                                        <li><code>rtsp://192.168.1.100:554/h264Preview_01_main</code> - Hikvision</li>
+                                        <li><code>rtsp://192.168.1.100:554/cam/realmonitor?channel=1&subtype=0</code> - Dahua</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="username" placeholder="Camera username (optional)">
+                            <div class="form-text">Leave blank if camera doesn't require authentication</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" placeholder="Camera password (optional)">
+                            <div class="form-text">Leave blank if camera doesn't require authentication</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <a href="{% url 'camera_settings' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Camera Settings
+                    </a>
+                    <div>
+                        <button type="button" class="btn btn-info me-2" id="testConnectionBtn">
+                            <i class="bi bi-wifi me-1"></i>Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle me-1"></i>Add Camera
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Connection Test Results -->
+        <div class="card mt-3" id="testResultsCard" style="display: none;">
+            <div class="card-header">
+                <h6 class="mb-0">Connection Test Results</h6>
+            </div>
+            <div class="card-body" id="testResults">
+                <!-- Test results will appear here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+function validateInput(input) {
+    const value = input.value();
+    const regex = /^[a-zA-Z0-9_-]+$/; // Allow alphanumeric, underscores, and hyphens
+
+    if (!regex.test(value)) {
+        alert('Only letters, numbers, hypens and underscores are allowed.');
+        this.focus()
+        return false;
+    }
+    return true;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('testConnectionBtn').addEventListener('click', function() {
+        testConnection();
+    });
+});
+
+function testConnection() {
+    const btn = document.getElementById('testConnectionBtn');
+    const resultCard = document.getElementById('testResultsCard');
+    const results = document.getElementById('testResults');
+    
+    // Get form data
+    const rtspUrl = document.querySelector('input[name="rtsp_url"]').value;
+    const username = document.querySelector('input[name="username"]').value;
+    const password = document.querySelector('input[name="password"]').value;
+    
+    if (!rtspUrl) {
+        alert('Please enter an RTSP URL first.');
+        return;
+    }
+    
+    // Show loading state
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing Connection...';
+    btn.disabled = true;
+    
+    // Show results card
+    resultCard.style.display = 'block';
+    results.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+            <span>Testing connection to ${rtspUrl}...</span>
+        </div>
+    `;
+    
+    // Simulate connection test
+    setTimeout(() => {
+        const success = Math.random() > 0.3; // 70% success rate for demo
+        
+        if (success) {
+            results.innerHTML = `
+                <div class="alert alert-success mb-0">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-check-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="mb-1">Connection Successful!</h6>
+                            <p class="mb-0">Camera stream is accessible and ready for configuration.</p>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <strong>Resolution</strong><br>
+                            <span class="text-muted">1920x1080</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Frame Rate</strong><br>
+                            <span class="text-muted">30 FPS</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Codec</strong><br>
+                            <span class="text-muted">H.264</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Bitrate</strong><br>
+                            <span class="text-muted">2.5 Mbps</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Connection OK';
+            btn.className = 'btn btn-success me-2';
+        } else {
+            results.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="mb-1">Connection Failed</h6>
+                            <p class="mb-0">Unable to connect to the camera stream. Please check the following:</p>
+                        </div>
+                    </div>
+                    <hr>
+                    <ul class="mb-0">
+                        <li>Verify the RTSP URL is correct</li>
+                        <li>Check if the camera is powered on and connected to the network</li>
+                        <li>Ensure the username and password are correct (if required)</li>
+                        <li>Verify network connectivity to the camera's IP address</li>
+                        <li>Check if the camera supports RTSP streaming</li>
+                    </ul>
+                </div>
+            `;
+            
+            btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Connection Failed';
+            btn.className = 'btn btn-danger me-2';
+        }
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+            btn.className = 'btn btn-info me-2';
+            btn.disabled = false;
+        }, 3000);
+        
+    }, 2000);
+}
+</script>
+{% endblock %}

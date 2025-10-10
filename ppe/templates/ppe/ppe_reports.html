@@ -1,0 +1,769 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}PPE Detection Reports - SOCA Edge{% endblock %}
+{% block page_title %}PPE Detection Reports{% endblock %}
+{% block page_subtitle %}Comprehensive PPE Compliance Analytics and Safety Insights{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .chart-card {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+    }
+    
+    .chart-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
+    }
+    
+    .kpi-widget {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .kpi-widget::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 100%;
+        height: 100%;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50%;
+        transform: rotate(45deg);
+    }
+    
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0;
+    }
+    
+    .kpi-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+        margin-bottom: 0;
+    }
+    
+    .compliance-good { background: linear-gradient(135deg, #28a745 0%, #20a038 100%); }
+    .compliance-warning { background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); }
+    .compliance-danger { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); }
+    
+    .filter-btn {
+        border-radius: 8px;
+        border: 2px solid #dee2e6;
+        background: white;
+        transition: all 0.3s ease;
+    }
+    
+    .filter-btn:hover {
+        border-color: #007bff;
+        background: #f8f9fa;
+    }
+    
+    .filter-btn.active {
+        background: #007bff;
+        border-color: #007bff;
+        color: white;
+    }
+    
+    .chart-container {
+        height: 350px;
+        width: 100%;
+    }
+    
+    .chart-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 15px;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(0,0,0,.1);
+        border-radius: 50%;
+        border-top-color: #007bff;
+        animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .export-btn {
+        background: linear-gradient(135deg, #6f42c1 0%, #5a369a 100%);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .export-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Filters Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="filter-card p-3">
+                <div class="row align-items-center">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Camera</label>
+                        <select class="form-select" id="cameraFilter" onchange="updateReports()">
+                            <option value="">All Cameras</option>
+                            {% for camera in cameras %}
+                            <option value="{{ camera.id }}">{{ camera.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Time Period</label>
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" class="btn filter-btn active" data-period="1" onclick="setTimePeriod(1, this)">1 Day</button>
+                            <button type="button" class="btn filter-btn" data-period="7" onclick="setTimePeriod(7, this)">7 Days</button>
+                            <button type="button" class="btn filter-btn" data-period="30" onclick="setTimePeriod(30, this)">30 Days</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Custom Date Range</label>
+                        <div class="row">
+                            <div class="col-6">
+                                <input type="date" class="form-control" id="startDate" onchange="updateReports()">
+                            </div>
+                            <div class="col-6">
+                                <input type="date" class="form-control" id="endDate" onchange="updateReports()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Actions</label>
+                        <div class="d-flex gap-2">
+                            <button class="btn export-btn" onclick="exportReport()">
+                                <i class="bi bi-download me-1"></i>Export
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="refreshReports()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Widgets Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="kpi-widget compliance-good" id="todayComplianceWidget">
+                <h3 class="kpi-value" id="todayCompliance">--</h3>
+                <p class="kpi-label">Today's Compliance Rate</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-widget" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
+                <h3 class="kpi-value" id="totalDetections">--</h3>
+                <p class="kpi-label">Total Detections</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-widget compliance-danger">
+                <h3 class="kpi-value" id="totalViolations">--</h3>
+                <p class="kpi-label">Total Violations</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-widget" style="background: linear-gradient(135deg, #6f42c1 0%, #5a369a 100%);">
+                <h3 class="kpi-value" id="activeCameras">--</h3>
+                <p class="kpi-label">Active Cameras</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div class="row mb-4">
+        <!-- Compliance Rate Over Time -->
+        <div class="col-lg-8">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">1. Compliance Rate Trend</h5>
+                    <span class="loading-spinner d-none" id="complianceLoading"></span>
+                </div>
+                <div class="chart-container" id="complianceChart"></div>
+            </div>
+        </div>
+        <!-- Violation Frequency by Type -->
+        <div class="col-lg-4">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">2. Violations by PPE Type</h5>
+                    <span class="loading-spinner d-none" id="violationTypeLoading"></span>
+                </div>
+                <div class="chart-container" id="violationTypeChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="row mb-4">
+        <!-- Violations Heatmap by Hour -->
+        <div class="col-lg-6">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">3. Violations by Hour of Day</h5>
+                    <span class="loading-spinner d-none" id="heatmapLoading"></span>
+                </div>
+                <div class="chart-container" id="violationHeatmap"></div>
+            </div>
+        </div>
+        <!-- Location-Based Compliance -->
+        <div class="col-lg-6">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">4. Compliance by Camera Location</h5>
+                    <span class="loading-spinner d-none" id="locationLoading"></span>
+                </div>
+                <div class="chart-container" id="locationChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 3 -->
+    <div class="row mb-4">
+        <!-- Trend Analysis -->
+        <div class="col-lg-8">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">5. Trend Analysis - Compliant vs Non-Compliant</h5>
+                    <span class="loading-spinner d-none" id="trendLoading"></span>
+                </div>
+                <div class="chart-container" id="trendChart"></div>
+            </div>
+        </div>
+        <!-- Top Violating Areas -->
+        <div class="col-lg-4">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">Top Violating Cameras</h5>
+                    <span class="loading-spinner d-none" id="topViolatorsLoading"></span>
+                </div>
+                <div class="chart-container" id="topViolatorsChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="chart-card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="chart-title">Detailed Statistics Summary</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="exportTable()">
+                            <i class="bi bi-table me-1"></i>Export Table
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="summaryTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Camera</th>
+                                <th>Total Detections</th>
+                                <th>Compliant</th>
+                                <th>Violations</th>
+                                <th>Compliance Rate</th>
+                                <th>Most Common Violation</th>
+                                <th>Last Detection</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global variables
+let chartInstances = {};
+let currentPeriod = 1;
+let currentCamera = '';
+
+// Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+    initializeDates();
+    updateReports();
+});
+
+function initializeDates() {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    document.getElementById('endDate').value = today.toISOString().split('T')[0];
+    document.getElementById('startDate').value = yesterday.toISOString().split('T')[0];
+}
+
+function setTimePeriod(days, button) {
+    currentPeriod = days;
+    
+    // Update button states
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    button.classList.add('active');
+    
+    // Clear custom dates when using preset periods
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    
+    updateReports();
+}
+
+function updateReports() {
+    currentCamera = document.getElementById('cameraFilter').value;
+    
+    // Show loading spinners
+    document.querySelectorAll('.loading-spinner').forEach(spinner => {
+        spinner.classList.remove('d-none');
+    });
+    
+    // Update all charts and data
+    updateKPIs();
+    updateComplianceChart();
+    updateViolationTypeChart();
+    updateViolationHeatmap();
+    updateLocationChart();
+    updateTrendChart();
+    updateTopViolatorsChart();
+    updateSummaryTable();
+}
+
+function refreshReports() {
+    updateReports();
+}
+
+function getFilterParams() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    const params = new URLSearchParams({
+        camera: currentCamera,
+        period: startDate && endDate ? 'custom' : currentPeriod
+    });
+    
+    if (startDate && endDate) {
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+    }
+    
+    return params;
+}
+
+// KPI Updates
+function updateKPIs() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/kpi/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('todayCompliance').textContent = data.compliance_rate + '%';
+            document.getElementById('totalDetections').textContent = data.total_detections;
+            document.getElementById('totalViolations').textContent = data.total_violations;
+            document.getElementById('activeCameras').textContent = data.active_cameras;
+            
+            // Update compliance widget color
+            const widget = document.getElementById('todayComplianceWidget');
+            widget.className = 'kpi-widget ' + 
+                (data.compliance_rate >= 90 ? 'compliance-good' : 
+                 data.compliance_rate >= 70 ? 'compliance-warning' : 'compliance-danger');
+        })
+        .catch(error => console.error('Error fetching KPIs:', error));
+}
+
+// Chart Update Functions
+function updateComplianceChart() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/compliance-trend/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createComplianceChart(data);
+            document.getElementById('complianceLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching compliance data:', error);
+            document.getElementById('complianceLoading').classList.add('d-none');
+        });
+}
+
+function createComplianceChart(data) {
+    if (chartInstances.compliance) {
+        chartInstances.compliance.destroy();
+    }
+    
+    const options = {
+        series: [{
+            name: 'Compliance Rate',
+            data: data.compliance_rates
+        }],
+        chart: {
+            type: 'line',
+            height: 350,
+            toolbar: { show: true }
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 3
+        },
+        colors: ['#28a745'],
+        xaxis: {
+            categories: data.labels,
+            title: { text: 'Time Period' }
+        },
+        yaxis: {
+            title: { text: 'Compliance Rate (%)' },
+            min: 0,
+            max: 100
+        },
+        tooltip: {
+            y: {
+                formatter: function (val) {
+                    return val + '%';
+                }
+            }
+        },
+        grid: {
+            borderColor: '#e7e7e7',
+            row: { colors: ['#f3f3f3', 'transparent'], opacity: 0.5 }
+        }
+    };
+    
+    chartInstances.compliance = new ApexCharts(document.querySelector("#complianceChart"), options);
+    chartInstances.compliance.render();
+}
+
+function updateViolationTypeChart() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/violation-types/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createViolationTypeChart(data);
+            document.getElementById('violationTypeLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching violation type data:', error);
+            document.getElementById('violationTypeLoading').classList.add('d-none');
+        });
+}
+
+function createViolationTypeChart(data) {
+    if (chartInstances.violationType) {
+        chartInstances.violationType.destroy();
+    }
+    
+    const options = {
+        series: data.values,
+        chart: {
+            type: 'donut',
+            height: 350
+        },
+        labels: data.labels,
+        colors: ['#dc3545', '#fd7e14', '#ffc107', '#198754', '#0d6efd'],
+        legend: {
+            position: 'bottom'
+        },
+        tooltip: {
+            y: {
+                formatter: function (val) {
+                    return val + ' violations';
+                }
+            }
+        }
+    };
+    
+    chartInstances.violationType = new ApexCharts(document.querySelector("#violationTypeChart"), options);
+    chartInstances.violationType.render();
+}
+
+function updateViolationHeatmap() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/violation-heatmap/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createViolationHeatmap(data);
+            document.getElementById('heatmapLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching heatmap data:', error);
+            document.getElementById('heatmapLoading').classList.add('d-none');
+        });
+}
+
+function createViolationHeatmap(data) {
+    if (chartInstances.heatmap) {
+        chartInstances.heatmap.destroy();
+    }
+    
+    const options = {
+        series: [{
+            name: 'Violations',
+            data: data.series
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        colors: ['#dc3545'],
+        xaxis: {
+            categories: data.hours,
+            title: { text: 'Hour of Day' }
+        },
+        yaxis: {
+            title: { text: 'Number of Violations' }
+        },
+        tooltip: {
+            y: {
+                formatter: function (val) {
+                    return val + ' violations';
+                }
+            }
+        }
+    };
+    
+    chartInstances.heatmap = new ApexCharts(document.querySelector("#violationHeatmap"), options);
+    chartInstances.heatmap.render();
+}
+
+function updateLocationChart() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/location-compliance/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createLocationChart(data);
+            document.getElementById('locationLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching location data:', error);
+            document.getElementById('locationLoading').classList.add('d-none');
+        });
+}
+
+function createLocationChart(data) {
+    if (chartInstances.location) {
+        chartInstances.location.destroy();
+    }
+    
+    const options = {
+        series: [{
+            name: 'Compliance Rate',
+            data: data.compliance_rates
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        colors: ['#007bff'],
+        xaxis: {
+            categories: data.cameras,
+            title: { text: 'Camera Locations' }
+        },
+        yaxis: {
+            title: { text: 'Compliance Rate (%)' },
+            min: 0,
+            max: 100
+        },
+        tooltip: {
+            y: {
+                formatter: function (val) {
+                    return val + '%';
+                }
+            }
+        }
+    };
+    
+    chartInstances.location = new ApexCharts(document.querySelector("#locationChart"), options);
+    chartInstances.location.render();
+}
+
+function updateTrendChart() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/trend-analysis/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createTrendChart(data);
+            document.getElementById('trendLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching trend data:', error);
+            document.getElementById('trendLoading').classList.add('d-none');
+        });
+}
+
+function createTrendChart(data) {
+    if (chartInstances.trend) {
+        chartInstances.trend.destroy();
+    }
+    
+    const options = {
+        series: [{
+            name: 'Compliant',
+            data: data.compliant
+        }, {
+            name: 'Non-Compliant',
+            data: data.violations
+        }],
+        chart: {
+            type: 'area',
+            height: 350,
+            stacked: true
+        },
+        colors: ['#28a745', '#dc3545'],
+        xaxis: {
+            categories: data.labels,
+            title: { text: 'Time Period' }
+        },
+        yaxis: {
+            title: { text: 'Number of Detections' }
+        },
+        fill: {
+            opacity: 0.7
+        }
+    };
+    
+    chartInstances.trend = new ApexCharts(document.querySelector("#trendChart"), options);
+    chartInstances.trend.render();
+}
+
+function updateTopViolatorsChart() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/top-violators/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            createTopViolatorsChart(data);
+            document.getElementById('topViolatorsLoading').classList.add('d-none');
+        })
+        .catch(error => {
+            console.error('Error fetching top violators data:', error);
+            document.getElementById('topViolatorsLoading').classList.add('d-none');
+        });
+}
+
+function createTopViolatorsChart(data) {
+    if (chartInstances.topViolators) {
+        chartInstances.topViolators.destroy();
+    }
+    
+    const options = {
+        series: [{
+            name: 'Violations',
+            data: data.violations
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        colors: ['#dc3545'],
+        xaxis: {
+            categories: data.cameras,
+            title: { text: 'Camera' }
+        },
+        yaxis: {
+            title: { text: 'Total Violations' }
+        },
+        tooltip: {
+            y: {
+                formatter: function (val) {
+                    return val + ' violations';
+                }
+            }
+        }
+    };
+    
+    chartInstances.topViolators = new ApexCharts(document.querySelector("#topViolatorsChart"), options);
+    chartInstances.topViolators.render();
+}
+
+function updateSummaryTable() {
+    const params = getFilterParams();
+    
+    fetch(`/ppe/api/reports/summary-table/?${params}`)
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('summaryTableBody');
+            tbody.innerHTML = '';
+            
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.camera_name}</td>
+                    <td>${row.total_detections}</td>
+                    <td class="text-success">${row.compliant}</td>
+                    <td class="text-danger">${row.violations}</td>
+                    <td>
+                        <span class="badge ${row.compliance_rate >= 90 ? 'bg-success' : row.compliance_rate >= 70 ? 'bg-warning' : 'bg-danger'}">
+                            ${row.compliance_rate}%
+                        </span>
+                    </td>
+                    <td>${row.most_common_violation}</td>
+                    <td>${row.last_detection}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching summary table:', error);
+            document.getElementById('summaryTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error loading data</td></tr>';
+        });
+}
+
+// Export functions
+function exportReport() {
+    const params = getFilterParams();
+    window.open(`/ppe/api/reports/export/?${params}`, '_blank');
+}
+
+function exportTable() {
+    const params = getFilterParams();
+    window.open(`/ppe/api/reports/export-table/?${params}`, '_blank');
+}
+</script>
+{% endblock %}

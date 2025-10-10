@@ -1,0 +1,710 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Security Intrusion Reports - SOCA Edge{% endblock %}
+{% block page_title %}Security Intrusion Reports{% endblock %}
+{% block page_subtitle %}Comprehensive Security Analysis & Reporting{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-section {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        transition: transform 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    
+    .severity-critical { border-left: 4px solid #dc3545; }
+    .severity-high { border-left: 4px solid #fd7e14; }
+    .severity-medium { border-left: 4px solid #ffc107; }
+    .severity-low { border-left: 4px solid #28a745; }
+    
+    .incident-row {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        transition: background-color 0.2s ease;
+    }
+    
+    .incident-row:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .status-pending { background-color: #fff3cd; color: #856404; }
+    .status-acknowledged { background-color: #d4edda; color: #155724; }
+    .status-resolved { background-color: #d1ecf1; color: #0c5460; }
+    
+    .chart-container {
+        height: 300px;
+        margin: 15px 0;
+    }
+    
+    .filter-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .export-buttons {
+        margin-bottom: 20px;
+    }
+    
+    .incident-image {
+        width: 60px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .time-pattern-grid {
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        gap: 2px;
+        margin: 10px 0;
+    }
+    
+    .hour-cell {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        border-radius: 3px;
+        color: white;
+        font-weight: 500;
+    }
+    
+    .trend-indicator {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.9rem;
+        margin-left: 10px;
+    }
+    
+    .trend-up { color: #dc3545; }
+    .trend-down { color: #28a745; }
+    .trend-stable { color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Filter and Export Section -->
+    <div class="filter-section">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <form id="reportFilters" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Date Range</label>
+                        <select class="form-select" id="dateRange" onchange="toggleCustomDateRange()">
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7days" selected>Last 7 Days</option>
+                            <option value="last30days">Last 30 Days</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                        <div id="customDateRange" class="mt-2" style="display: none;">
+                            <div class="row">
+                                <div class="col-6">
+                                    <input type="date" class="form-control form-control-sm" id="startDate" placeholder="Start Date">
+                                </div>
+                                <div class="col-6">
+                                    <input type="date" class="form-control form-control-sm" id="endDate" placeholder="End Date">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Camera/Location</label>
+                        <select class="form-select" id="cameraFilter">
+                            <option value="">All Cameras</option>
+                            {% for camera in cameras %}
+                            <option value="{{ camera.id }}">{{ camera.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Severity</label>
+                        <select class="form-select" id="severityFilter">
+                            <option value="">All Severities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary" onclick="updateReport()">
+                            <i class="bi bi-funnel"></i> Apply Filters
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="export-buttons">
+                    <button class="btn btn-success" onclick="exportToPDF()">
+                        <i class="bi bi-file-pdf"></i> Export PDF
+                    </button>
+                    <button class="btn btn-info" onclick="exportToCSV()">
+                        <i class="bi bi-file-excel"></i> Export CSV
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.print()">
+                        <i class="bi bi-printer"></i> Print
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Filters Display -->
+    {% if current_filters.date_range != 'last7days' or current_filters.camera_filter or current_filters.severity_filter %}
+    <div class="alert alert-info">
+        <i class="bi bi-funnel me-2"></i><strong>Active Filters:</strong>
+        {% if current_filters.date_range != 'last7days' %}
+            <span class="badge bg-primary me-1">{{ current_filters.date_range|title }}</span>
+        {% endif %}
+        {% if current_filters.camera_filter %}
+            <span class="badge bg-success me-1">Camera: {{ current_filters.camera_filter }}</span>
+        {% endif %}
+        {% if current_filters.severity_filter %}
+            <span class="badge bg-warning me-1">Severity: {{ current_filters.severity_filter|title }}</span>
+        {% endif %}
+        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearFilters()">
+            <i class="bi bi-x-circle"></i> Clear All Filters
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- Executive Summary Dashboard -->
+    <div class="report-section">
+        <h4><i class="bi bi-graph-up me-2"></i>Executive Summary</h4>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalIncidents">{{ report_data.total_incidents }}</div>
+                    <div class="stat-label">Total Incidents</div>
+                    <div class="trend-indicator trend-up">
+                        <i class="bi bi-arrow-up"></i> +15% vs last period
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number" id="criticalIncidents">{{ report_data.critical_incidents }}</div>
+                    <div class="stat-label">Critical Incidents</div>
+                    <div class="trend-indicator trend-down">
+                        <i class="bi bi-arrow-down"></i> -8% vs last period
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number" id="avgResponseTime">{{ report_data.avg_response_time }}</div>
+                    <div class="stat-label">Avg Response Time (min)</div>
+                    <div class="trend-indicator trend-stable">
+                        <i class="bi bi-dash"></i> No change
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-number" id="pendingAlerts">{{ report_data.pending_alerts }}</div>
+                    <div class="stat-label">Pending Alerts</div>
+                    <div class="trend-indicator trend-up">
+                        <i class="bi bi-arrow-up"></i> +3 since yesterday
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="row">
+        <!-- Incident Timeline -->
+        <div class="col-md-6">
+            <div class="report-section">
+                <h5><i class="bi bi-clock-history me-2"></i>Incident Timeline (24h)</h5>
+                <div id="incidentTimelineChart" class="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- Severity Breakdown -->
+        <div class="col-md-6">
+            <div class="report-section">
+                <h5><i class="bi bi-exclamation-triangle me-2"></i>Severity Distribution</h5>
+                <div id="severityChart" class="chart-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Location Analysis -->
+        <div class="col-md-6">
+            <div class="report-section">
+                <h5><i class="bi bi-geo-alt me-2"></i>Incidents by Location</h5>
+                <div id="locationChart" class="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- Intrusion Type Analysis -->
+        <div class="col-md-6">
+            <div class="report-section">
+                <h5><i class="bi bi-shield-exclamation me-2"></i>Intrusion Types</h5>
+                <div id="intrusionTypeChart" class="chart-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Time Pattern Analysis -->
+    <div class="report-section">
+        <h5><i class="bi bi-clock me-2"></i>Time Pattern Analysis</h5>
+        <p class="text-muted">Heat map showing incident frequency by hour of day (darker = more incidents)</p>
+        <div class="time-pattern-grid" id="timePatternGrid">
+            <!-- Will be populated by JavaScript -->
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <small class="text-muted">
+                    <strong>Peak Hours:</strong> <span id="peakHours">08:00-09:00, 17:00-18:00</span> |
+                    <strong>Quiet Hours:</strong> <span id="quietHours">02:00-05:00</span>
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Incident Table -->
+    <div class="report-section">
+        <h5><i class="bi bi-table me-2"></i>Detailed Incident Records</h5>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Camera/Location</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Objects</th>
+                        <th>Snapshot</th>
+                        <th>Response Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="incidentTableBody">
+                    {% for incident in incidents %}
+                    <tr class="incident-row severity-{{ incident.severity }}">
+                        <td>
+                            <div>{{ incident.timestamp|date:"M d, H:i" }}</div>
+                            <small class="text-muted">{{ incident.timestamp|timesince }} ago</small>
+                        </td>
+                        <td>
+                            <div><strong>{{ incident.camera.name }}</strong></div>
+                            <small class="text-muted">{{ incident.camera.location|default:"Unknown Location" }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-primary">{{ incident.intrusion_type|default:"General" }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if incident.severity == 'critical' %}danger{% elif incident.severity == 'high' %}warning{% elif incident.severity == 'medium' %}info{% else %}success{% endif %}">
+                                {{ incident.severity|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge status-{% if incident.alert.is_acknowledged %}acknowledged{% else %}pending{% endif %}">
+                                {% if incident.alert.is_acknowledged %}Acknowledged{% else %}Pending{% endif %}
+                            </span>
+                        </td>
+                        <td>{{ incident.object_count|default:1 }}</td>
+                        <td>
+                            {% if incident.annotated_snapshot_path %}
+                            <img src="{{ MEDIA_URL }}{{ incident.annotated_snapshot_path }}" 
+                                 class="incident-image" 
+                                 onclick="showSnapshotModal('{{ MEDIA_URL }}{{ incident.annotated_snapshot_path }}', '{{ incident.camera.name }}', '{{ incident.timestamp }}')"
+                                 alt="Incident snapshot">
+                            {% else %}
+                            <span class="text-muted">No image</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="text-{% if incident.response_time > 5 %}danger{% elif incident.response_time > 2 %}warning{% else %}success{% endif %}">
+                                {{ incident.response_time|default:"--" }}m
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="viewIncidentDetails({{ incident.id }})">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                {% if not incident.alert.is_acknowledged %}
+                                <button class="btn btn-outline-success" onclick="acknowledgeIncident({{ incident.alert.id }})">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted">No incidents found for the selected criteria</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="report-section">
+        <h5><i class="bi bi-speedometer2 me-2"></i>System Performance Metrics</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6>Detection Accuracy</h6>
+                        <div class="h4 text-success">{{ report_data.detection_accuracy }}%</div>
+                        <small class="text-muted">Based on verified incidents</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6>False Positive Rate</h6>
+                        <div class="h4 text-warning">{{ report_data.false_positive_rate }}%</div>
+                        <small class="text-muted">Last 30 days</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6>Camera Uptime</h6>
+                        <div class="h4 text-info">{{ report_data.camera_uptime }}%</div>
+                        <small class="text-muted">Average across all cameras</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6>Alert Resolution Rate</h6>
+                        <div class="h4 text-primary">{{ report_data.resolution_rate }}%</div>
+                        <small class="text-muted">Within SLA timeframe</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Modal -->
+<div class="modal fade" id="snapshotModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Incident Snapshot</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalSnapshotImage" src="" class="img-fluid" alt="Incident snapshot">
+                <div class="mt-3">
+                    <p><strong>Camera:</strong> <span id="modalCameraName"></span></p>
+                    <p><strong>Timestamp:</strong> <span id="modalTimestamp"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incident Details Modal -->
+<div class="modal fade" id="incidentDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Incident Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="incidentDetailsContent">
+                <!-- Will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize charts
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    initializeTimePattern();
+    populateFiltersFromURL();
+});
+
+function populateFiltersFromURL() {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Set filter values from URL parameters
+    const dateRange = urlParams.get('date_range');
+    const cameraId = urlParams.get('camera_id');
+    const severity = urlParams.get('severity');
+    const startDate = urlParams.get('start_date');
+    const endDate = urlParams.get('end_date');
+    
+    if (dateRange) {
+        document.getElementById('dateRange').value = dateRange;
+        if (dateRange === 'custom') {
+            toggleCustomDateRange();
+            if (startDate) document.getElementById('startDate').value = startDate;
+            if (endDate) document.getElementById('endDate').value = endDate;
+        }
+    }
+    if (cameraId) {
+        document.getElementById('cameraFilter').value = cameraId;
+    }
+    if (severity) {
+        document.getElementById('severityFilter').value = severity;
+    }
+}
+
+function initializeCharts() {
+    // Incident Timeline Chart
+    const timelineOptions = {
+        series: [{
+            name: 'Incidents',
+            data: {{ report_data.timeline_data|safe }}
+        }],
+        chart: {
+            type: 'line',
+            height: 280,
+            toolbar: { show: false }
+        },
+        colors: ['#667eea'],
+        stroke: {
+            curve: 'smooth',
+            width: 3
+        },
+        xaxis: {
+            categories: {{ report_data.timeline_labels|safe }}
+        },
+        yaxis: {
+            title: { text: 'Number of Incidents' }
+        },
+        grid: {
+            borderColor: '#e0e6ed'
+        }
+    };
+    new ApexCharts(document.querySelector("#incidentTimelineChart"), timelineOptions).render();
+
+    // Severity Chart
+    const severityOptions = {
+        series: {{ report_data.severity_data|safe }},
+        chart: {
+            type: 'donut',
+            height: 280
+        },
+        labels: {{ report_data.severity_labels|safe }},
+        colors: ['#dc3545', '#fd7e14', '#ffc107', '#28a745'],
+        legend: {
+            position: 'bottom'
+        }
+    };
+    new ApexCharts(document.querySelector("#severityChart"), severityOptions).render();
+
+    // Location Chart
+    const locationOptions = {
+        series: [{
+            data: {{ report_data.location_data|safe }}
+        }],
+        chart: {
+            type: 'bar',
+            height: 280,
+            toolbar: { show: false }
+        },
+        plotOptions: {
+            bar: {
+                borderRadius: 4,
+                horizontal: true
+            }
+        },
+        xaxis: {
+            categories: {{ report_data.location_labels|safe }}
+        },
+        colors: ['#667eea']
+    };
+    new ApexCharts(document.querySelector("#locationChart"), locationOptions).render();
+
+    // Intrusion Type Chart
+    const typeOptions = {
+        series: {{ report_data.type_data|safe }},
+        chart: {
+            type: 'pie',
+            height: 280
+        },
+        labels: {{ report_data.type_labels|safe }},
+        colors: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe']
+    };
+    new ApexCharts(document.querySelector("#intrusionTypeChart"), typeOptions).render();
+}
+
+function initializeTimePattern() {
+    const grid = document.getElementById('timePatternGrid');
+    const patternData = {{ report_data.hourly_pattern|safe }};
+    const maxValue = Math.max(...patternData);
+    
+    for (let hour = 0; hour < 24; hour++) {
+        const cell = document.createElement('div');
+        cell.className = 'hour-cell';
+        const intensity = patternData[hour] / maxValue;
+        const alpha = Math.max(0.1, intensity);
+        cell.style.backgroundColor = `rgba(102, 126, 234, ${alpha})`;
+        cell.textContent = hour.toString().padStart(2, '0');
+        cell.title = `${hour}:00 - ${patternData[hour]} incidents`;
+        grid.appendChild(cell);
+    }
+}
+
+function toggleCustomDateRange() {
+    const dateRange = document.getElementById('dateRange').value;
+    const customDateRange = document.getElementById('customDateRange');
+    
+    if (dateRange === 'custom') {
+        customDateRange.style.display = 'block';
+    } else {
+        customDateRange.style.display = 'none';
+    }
+}
+
+function updateReport() {
+    // Get current filter values
+    const dateRange = document.getElementById('dateRange').value;
+    const cameraFilter = document.getElementById('cameraFilter').value;
+    const severityFilter = document.getElementById('severityFilter').value;
+    
+    // Build query parameters
+    const params = new URLSearchParams();
+    
+    if (dateRange === 'custom') {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        
+        if (startDate && endDate) {
+            params.append('date_range', 'custom');
+            params.append('start_date', startDate);
+            params.append('end_date', endDate);
+        } else {
+            alert('Please select both start and end dates for custom range.');
+            return;
+        }
+    } else if (dateRange) {
+        params.append('date_range', dateRange);
+    }
+    
+    if (cameraFilter) params.append('camera_id', cameraFilter);
+    if (severityFilter) params.append('severity', severityFilter);
+    
+    // Reload page with new filters
+    const currentUrl = window.location.pathname;
+    const newUrl = `${currentUrl}?${params.toString()}`;
+    
+    // Show loading indicator
+    const applyButton = document.querySelector('button[onclick="updateReport()"]');
+    const originalText = applyButton.innerHTML;
+    applyButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Applying...';
+    applyButton.disabled = true;
+    
+    // Redirect to filtered URL
+    window.location.href = newUrl;
+}
+
+function exportToPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Add report title
+    doc.setFontSize(20);
+    doc.text('Security Intrusion Report', 20, 30);
+    
+    // Add generation timestamp
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 40);
+    
+    // Export to PDF (simplified version)
+    doc.save('intrusion-report.pdf');
+}
+
+function exportToCSV() {
+    // This would generate and download a CSV file
+    console.log('Exporting to CSV...');
+}
+
+function showSnapshotModal(imageSrc, cameraName, timestamp) {
+    document.getElementById('modalSnapshotImage').src = imageSrc;
+    document.getElementById('modalCameraName').textContent = cameraName;
+    document.getElementById('modalTimestamp').textContent = timestamp;
+    new bootstrap.Modal(document.getElementById('snapshotModal')).show();
+}
+
+function viewIncidentDetails(incidentId) {
+    // This would fetch and display detailed incident information
+    console.log('Viewing details for incident:', incidentId);
+    new bootstrap.Modal(document.getElementById('incidentDetailsModal')).show();
+}
+
+function acknowledgeIncident(alertId) {
+    // This would mark the incident as acknowledged
+    console.log('Acknowledging incident:', alertId);
+}
+
+function clearFilters() {
+    // Reset all filter form values to defaults
+    document.getElementById('dateRange').value = 'last7days';
+    document.getElementById('cameraFilter').value = '';
+    document.getElementById('severityFilter').value = '';
+    
+    // Hide custom date range if visible
+    document.getElementById('customDateRange').style.display = 'none';
+    
+    // Redirect to reports page without any filters
+    window.location.href = window.location.pathname;
+}
+</script>
+{% endblock %}

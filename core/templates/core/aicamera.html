@@ -1,0 +1,408 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}AI Camera - SOCA Edge{% endblock %}
+{% block page_title %}AI Camera{% endblock %}
+{% block page_subtitle %}Cameras with AI Detection Modules{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Summary Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-camera-video fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ total_cameras }}</h4>
+                        <small class="opacity-90">Total Cameras</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #2E8B57 0%, #228B22 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-robot fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ ai_enabled_cameras }}</h4>
+                        <small class="opacity-90">AI Enabled</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #4A90E2 0%, #2171B5 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-circle-fill fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ online_cameras }}</h4>
+                        <small class="opacity-90">Online</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #F39C12 0%, #E67E22 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-exclamation-triangle fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ total_alerts }}</h4>
+                        <small class="opacity-90">Active Alerts</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Camera Table -->
+        <div class="card shadow-lg border-0">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%); border-bottom: 3px solid #3498DB;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-robot me-2 text-info"></i>
+                        AI Camera Management
+                    </h5>
+                    <span class="badge bg-light text-dark shadow-sm px-3 py-2">
+                        <i class="bi bi-camera-video me-1 text-primary"></i>
+                        {{ cameras|length }} Camera{{ cameras|length|pluralize }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if cameras %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead style="background: linear-gradient(135deg, #34495E 0%, #2C3E50 100%); color: white;">
+                            <tr>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-camera-video me-2 text-info"></i>
+                                    Camera
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-geo-alt me-2 text-warning"></i>
+                                    Location
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-cpu me-2 text-success"></i>
+                                    AI Module
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-info-circle me-2 text-primary"></i>
+                                    Description
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-power me-2 text-light"></i>
+                                    Status
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-brain me-2 text-secondary"></i>
+                                    AI
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-tools me-2 text-muted"></i>
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for camera in cameras %}
+                            <tr class="align-middle">
+                                <td class="py-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center me-3" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 40px; height: 40px;">
+                                            <i class="bi bi-camera-video text-white"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-0 fw-bold text-dark">{{ camera.name|default:"Unnamed Camera" }}</h6>
+                                            <small class="text-muted">ID: {{ camera.id }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-geo-alt text-primary me-2"></i>
+                                        <span class="text-muted">{{ camera.name|default:"Not Set" }}</span>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    {% if camera.aimodule %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #2E8B57 0%, #228B22 100%); color: white;">
+                                            <i class="bi bi-cpu me-1"></i>
+                                            {{ camera.aimodule.name }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-secondary border px-3 py-2 fs-6 shadow-sm">
+                                            <i class="bi bi-dash-circle me-1"></i>
+                                            No AI Module
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3">
+                                    {% if camera.aimodule %}
+                                        <small class="text-muted fw-normal">{{ camera.aimodule.description|default:"No description available" }}</small>
+                                    {% else %}
+                                        <small class="text-muted fst-italic">No AI module assigned</small>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    {% if camera.is_active %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #27AE60 0%, #2ECC71 100%); color: white;">
+                                            <i class="bi bi-circle-fill me-1"></i>
+                                            Online
+                                        </span>
+                                    {% else %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%); color: white;">
+                                            <i class="bi bi-x-circle-fill me-1"></i>
+                                            Offline
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    {% if camera.aimodule and camera.is_aimodule_active %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #3498DB 0%, #2980B9 100%); color: white;">
+                                            <i class="bi bi-check-circle me-1"></i>
+                                            Active
+                                        </span>
+                                    {% elif camera.aimodule and not camera.is_aimodule_active %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #F39C12 0%, #E67E22 100%); color: white;">
+                                            <i class="bi bi-pause-circle me-1"></i>
+                                            Inactive
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-secondary border px-3 py-2 fs-6 shadow-sm">
+                                            <i class="bi bi-dash-circle me-1"></i>
+                                            N/A
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    <div class="btn-group" role="group">
+                                        
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-outline-secondary btn-sm" title="Configure Camera" data-bs-toggle="tooltip">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </a>
+                                        {% if camera.is_aimodule_active and camera.aimodule %}
+                                        
+                                        <a href="#" 
+                                           data-camera-id="{{ camera.id }}" 
+                                           data-camera-name="{{ camera.name }}" 
+                                           data-aimodule-name="{{ camera.aimodule.module|default:'N/A' }}"
+                                           onclick="openSecurityAnalytics(this.dataset.cameraId, this.dataset.cameraName, this.dataset.aimoduleName)" 
+                                           class="btn btn-outline-warning btn-sm" title="Security Analytics" data-bs-toggle="tooltip">
+                                            <i class="bi bi-eye-fill"></i>
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <div class="mb-4">
+                        <i class="bi bi-camera-video display-1 text-muted"></i>
+                    </div>
+                    <h4 class="text-muted mb-3">No Cameras Found</h4>
+                    <p class="text-muted mb-4">Get started by adding your first AI-enabled camera to the system.</p>
+                    <a href="{% url 'camera_settings' %}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Add Your First Camera
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.badge {
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-primary), #007bff) !important;
+}
+
+.bg-success.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-success), #20c997) !important;
+}
+
+.bg-warning.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-warning), #fd7e14) !important;
+}
+
+.bg-danger.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-danger), #dc3545) !important;
+}
+
+.bg-secondary.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-secondary), #6c757d) !important;
+}
+
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.btn-group .btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-group .btn:hover {
+    transform: scale(1.1);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openSecurityAnalytics(cameraId, cameraName, aiModuleName) {
+    // Calculate window dimensions to accommodate info panel
+    const windowHeight = 560;  // Increased height for info panel
+    const windowWidth = 640;
+    
+    // Calculate center position
+    const left = (screen.width - windowWidth) / 2;
+    const top = (screen.height - windowHeight) / 2;
+    
+    // Map AI module names to correct URL patterns
+    let url;
+    console.log('AI Module Name received:', aiModuleName); // Debug log
+    
+    if (aiModuleName && aiModuleName !== 'N/A' && aiModuleName.trim() !== '') {
+        // Map module names to their corresponding URL patterns
+        const moduleName = aiModuleName.toLowerCase().trim();
+        console.log('Processed module name:', moduleName); // Debug log
+        
+        switch(moduleName) {
+            case 'security_intrusion':
+                url = '/detection/security_intrusion/' + cameraId + '/';
+                break;
+            case 'object_detection':
+                url = '/detection/object_detection/' + cameraId + '/';
+                break;
+            case 'detection_object_video_source':
+                url = '/detection/detection_object_video_source/' + cameraId + '/';
+                break;
+            case 'ppe_detection':
+                url = '/detection/ppe_detection/' + cameraId + '/';
+                break;
+            case 'obj_detection_yoloe':
+                url = '/detection/obj_detection_yoloe/' + cameraId + '/';
+                break;
+            case 'det_obj_cpu':
+                url = '/detection/det_obj_cpu/' + cameraId + '/';
+                break;
+            case 'ppe_det_cpu':
+                url = '/detection/ppe_det_cpu/' + cameraId + '/';
+                break;
+            case 'obj_det_cpu':
+                url = '/detection/obj_det_cpu/' + cameraId + '/';
+                break;
+            case 'obj_det_onnx':
+                url = '/detection/obj_det_onnx/' + cameraId + '/';
+                break;
+            // Handle PPE module routing to new PPE app
+            case 'ppe':
+            case 'ppe_check':
+            case 'ppe_detection_new':
+                url = '/ppe/detection/' + cameraId + '/';
+                break;
+            default:
+                console.warn('Unknown AI module:', moduleName, 'using default security_intrusion');
+                // Default to security_intrusion if module name doesn't match
+                url = '/detection/security_intrusion/' + cameraId + '/';
+                break;
+        }
+    } else {
+        console.log('No AI module specified, using default security_intrusion');
+        // Default to security_intrusion if no module specified
+        url = '/detection/security_intrusion/' + cameraId + '/';
+    }
+    
+    console.log('Final URL:', url); // Debug log
+      
+    // Create HTML content for video streaming with info panel
+    const htmlContent = '<!DOCTYPE html>' +
+        '<html>' +
+        '<head>' +
+            '<title>' + aiModuleName + '-'  + cameraName + '</title>' +
+            '<style>' +
+                'body { margin: 0; padding: 0; background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }' +
+                '.info-panel { background: linear-gradient(135deg, #34495E 0%, #2C3E50 100%); color: white; padding: 12px 16px; border-bottom: 3px solid #3498DB; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }' +
+                '.info-item { display: inline-block; margin-right: 24px; font-size: 13px; }' +
+                '.info-label { color: #BDC3C7; font-weight: 500; }' +
+                '.info-value { color: #ECF0F1; font-weight: 700; }' +
+                '.container { display: inline-block; background: #000; }' +
+                'img { display: block; width: auto; height: auto; object-fit: none; }' +
+                '.error { color: #ECF0F1; text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%); }' +
+                '.status-indicator { display: inline-block; width: 8px; height: 8px; background: #27AE60; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; box-shadow: 0 0 8px #27AE60; }' +
+                '@keyframes pulse { 0% { opacity: 1; box-shadow: 0 0 8px #27AE60; } 50% { opacity: 0.7; box-shadow: 0 0 16px #27AE60; } 100% { opacity: 1; box-shadow: 0 0 8px #27AE60; } }' +
+            '</style>' +
+        '</head>' +
+        '<body>' +
+            '<div class="info-panel">' +
+                '<div class="info-item">' +
+                    '<span class="info-label">Camera ID:</span> ' +
+                    '<span class="info-value">' + cameraId + '</span>' +
+                '</div>' +
+                '<div class="info-item">' +
+                    '<span class="info-label">Camera Name:</span> ' +
+                    '<span class="info-value">' + cameraName + '</span>' +
+                '</div>' +
+                '<div class="info-item">' +
+                    '<span class="info-label">AI Module:</span> ' +
+                    '<span class="info-value">' + aiModuleName + '</span>' +
+                '</div>' +
+                '<div class="info-item">' +
+                    '<span class="status-indicator"></span>' +
+                    '<span class="info-label">Status:</span> ' +
+                    '<span class="info-value">Active</span>' +
+                '</div>' +
+            '</div>' +
+            '<div class="container">' +
+                '<img src="' + url + '" alt="Security Analytics Stream" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">' +
+                '<div class="error" style="display: none;">' +
+                    '<h3>⚠️ Stream Error</h3>' +
+                    '<p>Unable to load security analytics stream for ' + cameraName + '</p>' +
+                    '<p><small>Camera ID: ' + cameraId + ' | AI Module: ' + aiModuleName + '</small></p>' +
+                    '<p><small>Attempted URL: ' + url + '</small></p>' +
+                    '<p><small>Please check if the camera is active and the AI module is configured correctly.</small></p>' +
+                '</div>' +
+            '</div>' +
+        '</body>' +
+        '</html>';
+    
+    // Open new window with streaming content
+    const newWindow = window.open('', 'security_analytics_' + cameraId, 
+        'width=' + windowWidth + ',height=' + windowHeight + ',left=' + left + ',top=' + top + ',scrollbars=no,resizable=yes');
+    
+    if (newWindow) {
+        try {
+            newWindow.document.write(htmlContent);
+            newWindow.document.close();
+            console.log('Security analytics window opened successfully for camera', cameraId);
+        } catch (error) {
+            console.error('Error writing to new window:', error);
+            alert('Failed to open security analytics window. Please check if pop-ups are blocked.');
+        }
+    } else {
+        console.error('Failed to open new window - may be blocked by popup blocker');
+        alert('Failed to open security analytics window. Please allow pop-ups for this site and try again.');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Media Test</title>
+</head>
+<body>
+    <h1>Testing Media URLs</h1>
+    
+    <h2>Direct URL Test:</h2>
+    <img src="/media/snapshots/Bardi-Carport_20250630_165940.jpg" alt="Direct URL" style="max-width: 300px;">
+    
+    <h2>Using MEDIA_URL:</h2>
+    <p>MEDIA_URL: {{ MEDIA_URL }}</p>
+    <img src="{{ MEDIA_URL }}snapshots/Bardi-Carport_20250630_165940.jpg" alt="Media URL" style="max-width: 300px;">
+    
+    <h2>Recent Snapshots:</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        <img src="{{ MEDIA_URL }}snapshots/Bardi-Carport_20250630_165940.jpg" style="width: 150px; height: 100px; object-fit: cover;">
+        <img src="{{ MEDIA_URL }}snapshots/Bardi-Kamar_20250630_171316.jpg" style="width: 150px; height: 100px; object-fit: cover;">
+        <img src="{{ MEDIA_URL }}snapshots/Bardi-Living_Room_20250625_055506.jpg" style="width: 150px; height: 100px; object-fit: cover;">
+    </div>
+</body>
+</html>

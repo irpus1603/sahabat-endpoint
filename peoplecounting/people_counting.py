@@ -1,0 +1,1339 @@
+
+import cv2
+import logging
+import numpy as np
+from threading import Thread
+from ultralytics import YOLO
+import time
+from queue import Queue
+from datetime import datetime
+import os
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Global variable to cache the time_sleep value
+_time_sleep = None
+
+def get_time_sleep():
+    """Get frame processing delay from config, with caching"""
+    global _time_sleep
+    if _time_sleep is None:
+        try:
+            from core.models import SystemConfig
+            _time_sleep = float(SystemConfig.get_value('frame_proc_delay', 0.020))
+        except:
+            _time_sleep = 0.020  # Default fallback
+    return _time_sleep
+
+
+# Lazy loading for YOLO model
+det_model = None
+label_map = None
+
+def get_model():
+    global det_model, label_map
+    if det_model is None:
+        # Set environment variables to prevent fork crashes
+        import os
+        os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+        os.environ['OMP_NUM_THREADS'] = '1'
+        os.environ['MKL_NUM_THREADS'] = '1'
+        
+        det_model = YOLO("models/yolo11n.mlpackage", task='detect')
+        label_map = det_model.names
+    return det_model, label_map
+
+
+# Queue for frames to be processed - Reduced size for better performance
+frame_queue = Queue(maxsize=30)
+
+# Lazy loading for whitelist
+_whitelist = None
+list_class = None
+
+def get_whitelist():
+    """Get detection class whitelist with lazy loading"""
+    global _whitelist, list_class
+    if _whitelist is None:
+        try:
+            from core.models import SystemConfig
+            _whitelist = SystemConfig.get_value('sec_det_cls_id_whitelist')
+            if _whitelist:
+                list_class = [int(x.strip()) for x in _whitelist.split(',')]
+            else:
+                list_class = (0,1,2,3)
+        except Exception as e:
+            list_class = (0,1,2,3)
+    return list_class
+
+# Global timestamp tracking for notifications (prevents spam)
+save_date_timestamp = {}
+
+# People counting tracking data
+people_tracks = {}  # Store tracking information for each person
+crossing_line_buffer = {}  # Buffer for line crossing detection
+cumulative_counts = {}  # Per-camera cumulative counts
+
+def is_blank_frame(frame, threshold=10):
+    """Check if frame is blank/black"""
+    if frame is None or frame.size == 0:
+        return True
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    stddev = np.std(gray_frame)
+    return stddev < threshold
+
+def is_uniform_frame(frame, threshold=15):
+    """Check if frame has uniform/no content"""
+    if frame is None or frame.size == 0:
+        return True
+    return np.all(np.abs(frame - frame.mean()) < threshold)
+
+def test_video_source_connectivity(hls_url, timeout=15):
+     """
+     Test HLS video source connectivity without starting full capture
+     Returns: dict with status information
+     """
+     result = {
+         'connected': False,
+         'error': None,
+         'frame_readable': False,
+         'source_info': {}
+     }
+     
+     cap = None
+     try:
+         logger.info(f"Testing connectivity to HLS source: {hls_url}")
+         
+         # Initialize video capture with timeout (longer for HLS)
+         if hls_url[0:5].lower() == 'local':
+            cap = cv2.VideoCapture(int(hls_url[6]))
+         else:
+             cap = cv2.VideoCapture(hls_url, cv2.CAP_FFMPEG)
+             cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout * 1000)
+             cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)  # HLS may need more time
+         
+         if not cap.isOpened():
+             result['error'] = "Failed to open video source"
+             return result
+         
+         result['connected'] = True
+         
+         # Get source information
+         try:
+             result['source_info'] = {
+                 'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                 'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                 'fps': int(cap.get(cv2.CAP_PROP_FPS)),
+                 'fourcc': int(cap.get(cv2.CAP_PROP_FOURCC))
+             }
+         except:
+             pass
+         
+         # Try to read a test frame (HLS may take longer to provide first frame)
+         ret, frame = cap.read()
+         if ret and frame is not None and not is_blank_frame(frame):
+             result['frame_readable'] = True
+             logger.info(f"HLS source test successful: {hls_url}")
+         else:
+             result['error'] = "Cannot read frames from HLS source"
+             logger.warning(f"HLS source connected but frames not readable: {hls_url}")
+             
+     except Exception as e:
+         result['error'] = str(e)
+         logger.error(f"Video source test failed: {e}")
+         
+     finally:
+         if cap is not None:
+             try:
+                 cap.release()
+             except:
+                 pass
+                 
+     return result
+
+def create_robust_capture_with_monitoring(hls_url, frame_queue, status_callback=None, shared_status=None):
+     """
+#     Enhanced wrapper for HLS capture_video with monitoring capabilities
+#     status_callback: function to call with connection status updates
+#     shared_status: shared status dict to check for stop signals
+#     """
+     connection_status = shared_status if shared_status else {
+         'connected': False,
+         'last_frame_time': None,
+         'total_frames': 0,
+         'connection_attempts': 0,
+         'errors': []
+     }
+     
+     def update_status(status_dict):
+         connection_status.update(status_dict)
+         if status_callback:
+             try:
+                 status_callback(connection_status.copy())
+             except Exception as e:
+                 logger.error(f"Status callback error: {e}")
+     
+     # Pre-test HLS connectivity
+     test_result = test_video_source_connectivity(hls_url)
+     if not test_result['connected']:
+         logger.error(f"Initial HLS connectivity test failed: {test_result['error']}")
+         update_status({'error': test_result['error']})
+     
+     # Start the enhanced capture with monitoring
+     try:
+         capture_video_with_monitoring(hls_url, frame_queue, update_status, connection_status)
+     except Exception as e:
+         logger.error(f"HLS capture monitoring failed: {e}")
+         update_status({'error': str(e), 'connected': False})
+
+def capture_video_with_monitoring(hls_url, frame_queue, status_update_func, connection_status):
+    """Enhanced HLS capture function with status monitoring"""
+    connection_attempts = 0
+    max_attempts = 5
+    base_retry_delay = 3  # Slightly longer for HLS
+    consecutive_failures = 0
+    last_frame_time = time.time()
+    reconnect_threshold = 15  # Longer threshold for HLS due to segment nature
+    total_frames = 0
+    
+    while True:
+        # Check for stop signal
+        if connection_status.get('stop_requested', False):
+            logger.info("Stop signal received in capture thread, exiting...")
+            break
+            
+        cap = None
+        retry_delay = base_retry_delay  # Initialize retry_delay
+        try:
+            connection_attempts += 1
+            status_update_func({
+                'connection_attempts': connection_attempts,
+                'status': 'connecting'
+            })
+            
+            logger.info(f"Attempting to connect to HLS source (attempt {connection_attempts}): {hls_url}")
+            
+            # Initialize the video capture with HLS-optimized parameters
+            if hls_url[0:5].lower() == 'local':
+                cap = cv2.VideoCapture(int(hls_url[6]))
+            else:
+                cap = cv2.VideoCapture(hls_url, cv2.CAP_FFMPEG)
+                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 15000)  # Longer for HLS
+                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000)   # Longer for HLS
+
+            # HLS-optimized streaming settings
+            cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Smaller for HLS
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            # Try to set H.264 if available (common for HLS)
+            try:
+                if hasattr(cv2, 'VideoWriter_fourcc'):
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'H264'))
+            except (AttributeError, Exception):
+                logger.debug("H.264 codec setting not supported for HLS, using default")
+
+            if not cap.isOpened():
+                raise ConnectionError("Unable to open video stream")
+
+            # Test initial frame read with retries for RTSP streams
+            ret, test_frame = False, None
+            max_frame_attempts = 10
+            for attempt in range(max_frame_attempts):
+                ret, test_frame = cap.read()
+                if ret and test_frame is not None:
+                    logger.info(f"Successfully read initial frame on attempt {attempt + 1}")
+                    break
+                logger.debug(f"Frame read attempt {attempt + 1} failed, retrying...")
+                time.sleep(0.5)  # Wait before retry
+            
+            if not ret or test_frame is None:
+                raise ConnectionError(f"Unable to read initial frame from stream after {max_frame_attempts} attempts")
+
+            # Success - update status
+            connection_attempts = 0
+            consecutive_failures = 0
+            last_frame_time = time.time()
+             
+            status_update_func({
+                'connected': True,
+                'status': 'streaming',
+                'last_frame_time': last_frame_time,
+                'connection_attempts': 0
+            })
+            
+            logger.info(f"Video stream connected successfully")
+            
+            # Put test frame in queue if valid
+            if not is_blank_frame(test_frame) and not is_uniform_frame(test_frame):
+                frame_queue.put(test_frame)
+                total_frames += 1
+
+            # Main streaming loop with enhanced monitoring
+            frame_count = 0
+            health_check_interval = 30
+            
+            while True:
+                # Check for stop signal
+                if connection_status.get('stop_requested', False):
+                    logger.info("Stop signal received in streaming loop, exiting...")
+                    return
+                    
+                current_time = time.time()
+                
+                # Timeout check
+                if current_time - last_frame_time > reconnect_threshold:
+                    raise ConnectionError(f"Frame timeout after {reconnect_threshold} seconds")
+                
+                ret, frame = cap.read()
+                
+                # Check for stop signal immediately after frame read
+                if connection_status.get('stop_requested', False):
+                    logger.info("Stop signal received after frame read, exiting...")
+                    return
+                
+                if not ret or frame is None:
+                    consecutive_failures += 1
+                    logger.warning(f"Frame read failed (consecutive: {consecutive_failures})")
+                    
+                    if consecutive_failures >= 5:
+                        raise ConnectionError("Multiple consecutive frame failures")
+                    
+                    time.sleep(get_time_sleep())
+                    continue
+                
+                # Success - reset counters and update status
+                consecutive_failures = 0
+                last_frame_time = current_time
+                frame_count += 1
+                total_frames += 1
+
+                # Skip bad frames
+                if is_blank_frame(frame) or is_uniform_frame(frame):
+                    continue
+
+                # Queue management - more aggressive clearing
+                if frame_queue.qsize() > 20:
+                    try:
+                        # Clear queue to keep only latest frames
+                        while frame_queue.qsize() > 5:
+                            frame_queue.get_nowait()
+                    except:
+                        pass
+
+                # Add frame to queue with non-blocking put
+                try:
+                    frame_queue.put_nowait(frame)
+                except:
+                    # Queue full, drop oldest frame and add new one
+                    try:
+                        frame_queue.get_nowait()
+                        frame_queue.put_nowait(frame)
+                    except:
+                        continue  # Skip this frame if queue operations fail
+                
+                # Update status periodically
+                if frame_count % health_check_interval == 0:
+                    status_update_func({
+                        'total_frames': total_frames,
+                        'last_frame_time': last_frame_time,
+                        'queue_size': frame_queue.qsize()
+                    })
+                    
+                    if not cap.isOpened():
+                        raise ConnectionError("Video capture object closed")
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Video capture error: {error_msg}")
+            
+            # Update error status
+            status_update_func({
+                'connected': False,
+                'status': 'error',
+                'error': error_msg,
+                'connection_attempts': connection_attempts
+            })
+            
+            # Calculate retry delay
+            if "timeout" in error_msg.lower() or "network" in error_msg.lower():
+                retry_delay = min(base_retry_delay * (2 ** min(connection_attempts, 4)), 30)
+            else:
+                retry_delay = base_retry_delay * min(connection_attempts, 3)
+            
+            if connection_attempts >= max_attempts:
+                logger.error(f"Max attempts reached, waiting 60 seconds...")
+                retry_delay = 60
+                connection_attempts = 0
+            
+            logger.info(f"Retrying in {retry_delay} seconds...")
+            
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except:
+                    pass
+                cap = None
+            
+            # Status update for disconnect
+            status_update_func({
+                'connected': False,
+                'status': 'disconnected'
+            })
+            
+            # Wait before retry
+            delay = locals().get('retry_delay', base_retry_delay)
+            time.sleep(delay)
+
+def save_snapshot_with_intrusion_data(frame, cameraid, message_body, detection_type, object_count, intrusion_details=None):
+    """
+    Save snapshot with detailed intrusion data to Detection and intrusionChecks tables
+    
+    Args:
+        frame: Image frame
+        cameraid: Camera ID
+        message_body: Alert message
+        detection_type: Type of detection (e.g., 'intrusion')
+        object_count: Number of detected objects
+        intrusion_details: Dictionary containing intrusion-specific details
+    """
+    try:
+        from core.models import Camera, Detection, intrusionChecks, Alert
+        from detection.save_snapshots import generate_frameid
+        from django.utils import timezone
+        from django.conf import settings
+        
+        camera = Camera.objects.get(id=cameraid)
+        cameraname = camera.name
+        
+        current_timestamp = timezone.now()
+        timestamp = current_timestamp.strftime('%d-%m-%y-%H-%M-%S')
+        
+        # Generate hierarchical frameid
+        frameid = generate_frameid(cameraid, current_timestamp)
+        
+        # Save snapshot
+        snapshot_filename = f"{cameraname} - Intrusion - {timestamp}.jpg"
+        snapshot_path = os.path.join(settings.MEDIA_ROOT, 'Snapshot/', snapshot_filename)
+        
+        os.makedirs(os.path.dirname(snapshot_path), exist_ok=True)
+        
+        if not cv2.imwrite(snapshot_path, frame):
+            raise ValueError(f"Failed to save snapshot to {snapshot_path}")
+        
+        # Save to Detection table
+        detection = Detection(
+            camera=camera,
+            frameid=frameid,
+            description=message_body,
+            detection_type=detection_type,
+            object_count=object_count,
+            annotated_snapshot_path=f'Snapshot/{snapshot_filename}'
+        )
+        detection.save()
+        
+        # Prepare intrusion details with defaults
+        if intrusion_details is None:
+            intrusion_details = {}
+        
+        # Extract intrusion-specific information
+        track_id = intrusion_details.get('track_id', 'unknown')
+        intrusion_type = intrusion_details.get('intrusion_type', 'unauthorized_entry')
+        severity = intrusion_details.get('severity', 'medium')
+        roi_area = intrusion_details.get('roi_area', 'restricted_zone')
+        detection_confidence = intrusion_details.get('confidence', 0.0)
+        person_location = intrusion_details.get('location', {})
+        
+        # Create comprehensive details dictionary
+        detailed_info = {
+            'detection_time': current_timestamp.isoformat(),
+            'camera_name': cameraname,
+            'camera_location': getattr(camera, 'location', ''),
+            'site_name': getattr(camera, 'site_name', ''),
+            'floor': getattr(camera, 'floor', ''),
+            'object_count': object_count,
+            'detection_confidence': detection_confidence,
+            'roi_area': roi_area,
+            'person_location': person_location,
+            'frame_id': frameid,
+            'snapshot_path': snapshot_filename,
+            'alert_message': message_body,
+            'processing_info': {
+                'model_version': 'yolo11n',
+                'detection_threshold': 0.3,
+                'roi_based': True
+            }
+        }
+        
+        # Save to intrusionChecks table with detailed information
+        intrusion_check = intrusionChecks(
+            camera=camera,
+            Detectionid=detection,
+            trackid=str(track_id),
+            intrusion=True,  # This is a confirmed intrusion
+            intrusion_type=intrusion_type,
+            severity=severity,
+            details=detailed_info
+        )
+        intrusion_check.save()
+        
+        # Create Alert record
+        alert = Alert(
+            camera=camera,
+            detection=detection,
+            severity=severity,
+            message=f"Security Intrusion Alert: {message_body}",
+            is_acknowledged=False
+        )
+        alert.save()
+        
+        logger.info(f"Intrusion detection recorded for camera: {cameraname}")
+        logger.info(f"- Detection ID: {detection.id}")
+        logger.info(f"- Intrusion Check ID: {intrusion_check.id}")
+        logger.info(f"- Track ID: {track_id}")
+        logger.info(f"- Intrusion Type: {intrusion_type}")
+        logger.info(f"- Severity: {severity}")
+        logger.info(f"- Object Count: {object_count}")
+        logger.info(f"- Snapshot: {snapshot_filename}")
+        
+        return {
+            'detection_id': detection.id,
+            'intrusion_check_id': intrusion_check.id,
+            'alert_id': alert.id,
+            'snapshot_path': snapshot_filename
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in save_snapshot_with_intrusion_data: {e}")
+        return None
+
+def save_snapshot_with_intrusion_async(frame, cameraid, message_body, detection_type, object_count, intrusion_details=None):
+    """Async wrapper for intrusion detection saving"""
+    Thread(target=save_snapshot_with_intrusion_data, 
+           args=(frame, cameraid, message_body, detection_type, object_count, intrusion_details)).start()
+
+# Removed undefined function references - these should be implemented separately if needed
+# def save_video_async(*args,**kwargs):
+#     Thread(target=save_video_record, args=args, kwargs=kwargs).start()
+# 
+# def send_mail_async(*args):
+#     Thread(target=send_email_notification, args=args).start()
+
+def send_telegram_async(*args):
+    from detection.send_notifications import send_telegram_notification
+    Thread(target=send_telegram_notification, args=args).start()
+
+def start_detection_stream(camera, hls_url):
+   
+    # Create frame queue and connection status with larger buffer
+    frame_queue = Queue(maxsize=30)  # Smaller queue for faster processing
+    connection_status = {'connected': False, 'error': None, 'stop_requested': False}
+    
+    def status_callback(status):
+        connection_status.update(status)
+        logger.info(f"Camera {camera.name} status: {status.get('status', 'unknown')}")
+    
+    # Test connectivity first
+    connectivity_test = test_video_source_connectivity(hls_url, timeout=10)
+    if not connectivity_test['connected']:
+        logger.warning(f"Initial connectivity test failed for camera {camera.name}: {connectivity_test['error']}")
+        yield create_status_frame(f"Connection failed: {connectivity_test['error']}")
+        return
+    
+    # Start capture thread
+    capture_thread = Thread(
+        target=create_robust_capture_with_monitoring,
+        args=(hls_url, frame_queue, status_callback, connection_status),
+        daemon=True
+    )
+    capture_thread.start()
+    
+    # Wait for capture to start
+    import time
+    time.sleep(1.0)
+    
+    # Wait for capture to establish connection and start producing frames
+    max_wait_attempts = 15  # 15 seconds total wait time
+    for attempt in range(max_wait_attempts):
+        if connection_status.get('connected', False) and not frame_queue.empty():
+            logger.info(f"Camera {camera.name} capture thread started successfully")
+            break
+        elif connection_status.get('error'):
+            error_msg = connection_status.get('error', 'Failed to start video capture')
+            logger.error(f"Video capture failed to start for camera {camera.name}: {error_msg}")
+            connection_status['stop_requested'] = True
+            yield create_status_frame(f"Failed to start stream: {error_msg}")
+            return
+        time.sleep(1.0)
+    else:
+        # Timeout waiting for connection
+        if not connection_status.get('connected', False):
+            error_msg = "Timeout waiting for video stream to start"
+            logger.error(f"Video capture failed to start for camera {camera.name}: {error_msg}")
+            connection_status['stop_requested'] = True
+            yield create_status_frame(f"Failed to start stream: {error_msg}")
+            return
+    
+    logger.info(f"Starting detection stream for camera {camera.name}")
+    
+    try:
+        # Stream processing with automatic cleanup
+        for frame_data in process_video_stream_with_reconnect(frame_queue, camera, connection_status):
+            yield frame_data
+            
+    except GeneratorExit:
+        # Client disconnected - cleanup resources
+        logger.info(f"Client disconnected for camera {camera.name}, cleaning up...")
+        connection_status['stop_requested'] = True
+        
+        # Wait a moment for threads to clean up
+        if capture_thread.is_alive():
+            logger.info(f"Waiting for capture thread to stop for camera {camera.name}...")
+            capture_thread.join(timeout=3.0)
+            if capture_thread.is_alive():
+                logger.warning(f"Capture thread for camera {camera.name} did not stop gracefully within 3 seconds")
+            else:
+                logger.info(f"Capture thread for camera {camera.name} stopped successfully")
+        
+        raise
+    except Exception as e:
+        logger.error(f"Detection stream error for camera {camera.name}: {e}")
+        connection_status['stop_requested'] = True
+        yield create_status_frame(f"Stream error: {str(e)}")
+
+def process_video_stream_with_reconnect(frame_queue, camera, connection_status):
+     """
+     Enhanced video stream processing with connection monitoring
+     """
+     try:
+         # Use the original process_video_stream but with connection monitoring
+         for frame_data in process_video_stream(frame_queue, camera):
+             # Check connection status periodically
+             if not connection_status.get('connected', True):
+                 # If disconnected, yield a status frame
+                 status_msg = connection_status.get('error', 'Connection lost')
+                 yield create_status_frame(f"Reconnecting... {status_msg}")
+             else:
+                 yield frame_data
+                 
+     except GeneratorExit:
+         # Client disconnected - cleanup resources
+         logger.info(f"Client disconnected for camera {camera.name}, cleaning up...")
+         # Signal threads to stop by setting a stop flag
+         connection_status['stop_requested'] = True
+         raise
+     except Exception as e:
+         logger.error(f"Stream processing error: {e}")
+         yield create_status_frame(f"Stream error: {str(e)}")
+
+def create_status_frame(message):
+     """Create a simple status frame with text message"""
+     import cv2
+     import numpy as np
+     
+     # Create a black frame
+     frame = np.zeros((480, 640, 3), dtype=np.uint8)
+     
+     # Add status text
+     font = cv2.FONT_HERSHEY_SIMPLEX
+     font_scale = 1
+     color = (0, 255, 255)  # Yellow
+     thickness = 2
+#     
+     # Calculate text size and position
+     text_size = cv2.getTextSize(message, font, font_scale, thickness)[0]
+     text_x = (frame.shape[1] - text_size[0]) // 2
+     text_y = (frame.shape[0] + text_size[1]) // 2
+#     
+     cv2.putText(frame, message, (text_x, text_y), font, font_scale, color, thickness)
+#     
+#     # Add timestamp
+     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+     cv2.putText(frame, timestamp, (10, 30), font, 0.7, (255, 255, 255), 1)
+     
+     # Encode frame
+     ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+     if ret:
+         frame_bytes = buffer.tobytes()
+         return (b'--frame\r\n'
+                 b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+     else:
+         return b''
+
+# Function to check if a point is inside a polygon
+def is_point_in_polygon(point, polygon):
+    return cv2.pointPolygonTest(polygon, point, False) >= 0
+
+def calculate_direction(prev_point, curr_point, roi_center, direction_type='vertical'):
+    """
+    Calculate movement direction based on previous and current positions
+    
+    Args:
+        prev_point: Previous position (x, y)
+        curr_point: Current position (x, y)
+        roi_center: ROI center point for reference
+        direction_type: 'vertical' (up/down) or 'horizontal' (left/right)
+    
+    Returns:
+        'IN', 'OUT', or None
+    """
+    if prev_point is None or curr_point is None:
+        return None
+    
+    if direction_type == 'vertical':
+        # Vertical movement: up = IN, down = OUT
+        movement = curr_point[1] - prev_point[1]
+        if movement > 5:  # Moving down (positive Y)
+            return 'OUT'
+        elif movement < -5:  # Moving up (negative Y)
+            return 'IN'
+    else:  # horizontal
+        # Horizontal movement: left = IN, right = OUT
+        movement = curr_point[0] - prev_point[0]
+        if movement > 5:  # Moving right (positive X)
+            return 'OUT'
+        elif movement < -5:  # Moving left (negative X)
+            return 'IN'
+    
+    return None
+
+def check_line_crossing(prev_point, curr_point, line_coords, direction_type='vertical'):
+    """
+    Check if a person crossed a line based on their movement
+    
+    Args:
+        prev_point: Previous position (x, y)
+        curr_point: Current position (x, y) 
+        line_coords: Line coordinates dict with x1, y1, x2, y2
+        direction_type: 'vertical' or 'horizontal' line orientation
+    
+    Returns:
+        'IN', 'OUT', or None if no crossing detected
+    """
+    if not prev_point or not curr_point or not line_coords:
+        return None
+    
+    x1, y1 = line_coords['x1'], line_coords['y1']
+    x2, y2 = line_coords['x2'], line_coords['y2']
+    
+    def point_line_side(px, py):
+        """Determine which side of line a point is on"""
+        return (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
+    
+    # Check if points are on different sides of the line
+    prev_side = point_line_side(prev_point[0], prev_point[1])
+    curr_side = point_line_side(curr_point[0], curr_point[1])
+    
+    # If signs are different, line was crossed
+    if (prev_side > 0 and curr_side < 0) or (prev_side < 0 and curr_side > 0):
+        if direction_type == 'vertical':
+            # For vertical lines: left to right = IN, right to left = OUT
+            if prev_point[0] < curr_point[0]:  # Moving right
+                return 'IN'
+            else:  # Moving left
+                return 'OUT'
+        else:  # horizontal
+            # For horizontal lines: top to bottom = IN, bottom to top = OUT
+            if prev_point[1] < curr_point[1]:  # Moving down
+                return 'IN'
+            else:  # Moving up
+                return 'OUT'
+    
+    return None
+
+def has_crossed_roi_boundary(prev_point, curr_point, roi_polygon, prev_inside, curr_inside):
+    """
+    Check if person has crossed ROI boundary
+    
+    Returns:
+        True if boundary was crossed, False otherwise
+    """
+    return prev_inside != curr_inside
+
+def get_roi_center(polygon):
+    """
+    Calculate the center point of a polygon ROI
+    """
+    if polygon is None or len(polygon) == 0:
+        return (0, 0)
+    
+    # Get all points from the polygon
+    points = polygon.reshape(-1, 2)
+    center_x = int(np.mean(points[:, 0]))
+    center_y = int(np.mean(points[:, 1]))
+    return (center_x, center_y)
+
+def save_people_counting_event(camera, person_id, direction, frame, roi_center, tracking_data=None):
+    """
+    Save detailed people counting event to database
+    """
+    try:
+        from core.models import Detection, PeopleCountingEvent
+        from detection.save_snapshots import generate_frameid
+        from django.utils import timezone
+        from django.conf import settings
+        
+        # Get current cumulative counts for this camera
+        camera_key = f"camera_{camera.id}"
+        if camera_key not in cumulative_counts:
+            # Get latest counts from database
+            latest_event = PeopleCountingEvent.objects.filter(camera=camera).order_by('-timestamp').first()
+            if latest_event:
+                cumulative_counts[camera_key] = {
+                    'in': latest_event.cumulative_in,
+                    'out': latest_event.cumulative_out,
+                    'occupancy': latest_event.occupancy
+                }
+            else:
+                cumulative_counts[camera_key] = {'in': 0, 'out': 0, 'occupancy': 0}
+        
+        # Update counts
+        if direction == 'IN':
+            cumulative_counts[camera_key]['in'] += 1
+            cumulative_counts[camera_key]['occupancy'] += 1
+        elif direction == 'OUT':
+            cumulative_counts[camera_key]['out'] += 1
+            cumulative_counts[camera_key]['occupancy'] = max(0, cumulative_counts[camera_key]['occupancy'] - 1)
+        
+        # Generate frame ID
+        current_timestamp = timezone.now()
+        frameid = generate_frameid(camera.id, current_timestamp)
+        
+        # Save snapshot
+        timestamp = current_timestamp.strftime('%d-%m-%y-%H-%M-%S')
+        snapshot_filename = f"{camera.name} - PeopleCounting - {direction} - {timestamp}.jpg"
+        snapshot_path = os.path.join(settings.MEDIA_ROOT, 'PeopleCounting/', snapshot_filename)
+        
+        os.makedirs(os.path.dirname(snapshot_path), exist_ok=True)
+        
+        if cv2.imwrite(snapshot_path, frame):
+            snapshot_relative_path = f'PeopleCounting/{snapshot_filename}'
+        else:
+            snapshot_relative_path = None
+        
+        # Create PeopleCountingEvent record with detailed information
+        event = PeopleCountingEvent(
+            camera=camera,
+            frameid=frameid,
+            person_id=str(person_id),
+            direction=direction,
+            cumulative_in=cumulative_counts[camera_key]['in'],
+            cumulative_out=cumulative_counts[camera_key]['out'],
+            occupancy=cumulative_counts[camera_key]['occupancy'],
+            snapshot_path=snapshot_relative_path
+        )
+        event.save()
+        
+        # Create Detection record with comprehensive details
+        detailed_description = (
+            f"People Counting Event - Person ID: {person_id}, Direction: {direction}, "
+            f"Camera: {camera.name}, Location: {getattr(camera, 'location', 'Unknown')}, "
+            f"Site: {getattr(camera, 'site_name', 'Unknown')}, Floor: {getattr(camera, 'floor', 'Unknown')}, "
+            f"Cumulative IN: {cumulative_counts[camera_key]['in']}, "
+            f"Cumulative OUT: {cumulative_counts[camera_key]['out']}, "
+            f"Current Occupancy: {cumulative_counts[camera_key]['occupancy']}, "
+            f"ROI Center: {roi_center}, "
+            f"Timestamp: {current_timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        if tracking_data:
+            detailed_description += (
+                f", Previous Position: {tracking_data.get('prev_center', 'N/A')}, "
+                f"Current Position: {tracking_data.get('current_center', 'N/A')}, "
+                f"Frames Tracked: {tracking_data.get('frames_tracked', 0)}"
+            )
+        
+        detection = Detection(
+            camera=camera,
+            frameid=frameid,
+            description=detailed_description,
+            detection_type='people_counting',
+            object_count=1,
+            annotated_snapshot_path=snapshot_relative_path or ''
+        )
+        detection.save()
+        
+        logger.info(f"People counting event saved: Camera {camera.name}, Person {person_id}, Direction {direction}")
+        logger.info(f"Counts - IN: {cumulative_counts[camera_key]['in']}, OUT: {cumulative_counts[camera_key]['out']}, Occupancy: {cumulative_counts[camera_key]['occupancy']}")
+        logger.info(f"Event ID: {event.id}, Detection ID: {detection.id}")
+        
+        return event
+        
+    except Exception as e:
+        logger.error(f"Error saving people counting event: {e}")
+        return None
+
+# Function to get polygon coordinates from the database
+def get_polygon_from_coordinates(coordinates_str):
+    if not coordinates_str:
+        return None
+    coords = list(map(int, coordinates_str.split(',')))
+    return np.array(coords, dtype=np.int32).reshape((-1, 1, 2))
+
+def draw_bounding_box(frame, track_id, cls_name, confidence, x1, y1, x2, y2, color=(255, 0, 0), thickness=1):
+    # Draw grey bounding box rectangle with thin line
+    rect_color = (192, 192, 192)  # Grey color
+    rect_thickness = 1
+    cv2.rectangle(frame, (x1, y1), (x2, y2), rect_color, rect_thickness)
+    
+    label = f"[ID.{track_id}]{cls_name.capitalize()}:{confidence:.2f}"
+    
+    # Calculate text size and position
+    font = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 0.3
+    font_thickness = 1
+    (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, font_thickness)
+    
+    # Position for text
+    text_x = x1
+    text_y = y1 - 10 if y1 - 10 > 10 else y1 + 10
+    
+    # Draw grey background rectangle for text
+    background_color = (255, 255, 255)  # White background
+    padding = 2
+    cv2.rectangle(frame, 
+                  (text_x - padding, text_y - text_height - padding), 
+                  (text_x + text_width + padding, text_y + baseline + padding), 
+                  background_color, -1)
+    
+    # Draw text on top of white background
+    text_color = (128, 128, 128)  # Black text
+    cv2.putText(frame, label, (text_x, text_y), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+
+def draw_roi_polylines(frame, polygons, transparency=0.6):
+    """
+    Draw ROI polylines with transparent gray fill
+    
+    Args:
+        frame: Input frame to draw on
+        polygons: List of polygon coordinates
+        transparency: Transparency level (0.0 to 1.0)
+    """
+    if not polygons:
+        return
+    
+    # Create overlay for transparency effect
+    overlay = frame.copy()
+    
+    for i, polygon in enumerate(polygons):
+        if polygon is not None and len(polygon) > 2:
+            # Fill polygon with gray color on overlay
+            fill_color = (128, 128, 240)  # Red color
+            cv2.fillPoly(overlay, [polygon], fill_color)
+            
+            # Draw polyline border
+            border_color = (96, 96, 96)  # Darker gray for border
+            cv2.polylines(overlay, [polygon], isClosed=True, color=border_color, thickness=2)
+    
+    # Blend overlay with original frame for transparency
+    cv2.addWeighted(overlay, transparency, frame, 1 - transparency, 0, frame)
+
+def draw_detection_counter(frame, count, object_type="people", 
+                          font=cv2.FONT_HERSHEY_DUPLEX, font_scale=0.4, 
+                          font_thickness=1, text_color=(255, 255, 255), 
+                          bg_color=(0, 0, 0), x_pos=50, y_offset=50):
+    """
+    Simple function to draw detection counter text on frame with background
+    
+    Args:
+        frame: Input frame
+        count: Number of detected objects
+        object_type: Type of object (e.g., "people", "cars", "objects")
+        font: OpenCV font type
+        font_scale: Font size
+        font_thickness: Text thickness
+        text_color: BGR color tuple for text
+        bg_color: BGR color tuple for background
+        x_pos: X position
+        y_offset: Y offset from bottom
+    """
+    frame_height = frame.shape[0]
+    y_position = frame_height - y_offset
+    
+    text = f'Total {object_type} detected: {count}'
+    
+    # Calculate text size for background
+    (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, font_thickness)
+    
+    # Draw white background rectangle
+    padding = 5
+    cv2.rectangle(frame, 
+                  (x_pos - padding, y_position - text_height - padding), 
+                  (x_pos + text_width + padding, y_position + baseline + padding), 
+                  bg_color, -1)
+    
+    # Draw text on top of background
+    cv2.putText(frame, text, (x_pos, y_position), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+
+# Function to process frames from the queue
+def process_video_stream(frame_queue, camera): 
+    global save_date_timestamp, people_tracks, cumulative_counts
+    cameraid = camera.id
+    cameraname = camera.name
+    roi_type = camera.roi_type
+
+    model, _ = get_model()
+    
+    # Get ROI data based on ROI type
+    roi_data = camera.get_roi_coordinates()
+    lines = []
+    line_coords = None
+    polygons = []
+    
+    if roi_type == 'line' and roi_data:
+        # Handle line ROI for crossing detection
+        if isinstance(roi_data, list):
+            for region in roi_data:
+                if isinstance(region, dict) and region.get('type') == 'line':
+                    line_coords = region
+                    break
+        elif isinstance(roi_data, dict) and roi_data.get('type') == 'line':
+            line_coords = roi_data
+    else:
+        # Handle polygon/rectangle ROI (fallback to original behavior)
+        roi_coords = camera.get_roi_polygon()
+        if roi_coords is not None:
+            # Fix: roi_coords should be treated as a single polygon, not multiple individual points
+            if len(roi_coords.shape) == 2 and roi_coords.shape[1] == 2:
+                # Convert (N, 2) to (N, 1, 2) format for OpenCV
+                polygons = [roi_coords.reshape(-1, 1, 2)]
+            else:
+                polygons = [roi_coords] if len(roi_coords.shape) == 3 else [roi_coords.reshape(-1, 1, 2)]
+    
+    if not line_coords and not polygons:
+        logger.warning(f"Camera {cameraname} - No ROI coordinates found")
+
+    # Initialize camera tracking data
+    camera_key = f"camera_{cameraid}"
+    if camera_key not in people_tracks:
+        people_tracks[camera_key] = {}
+    
+    # Get ROI center for direction calculation
+    roi_center = get_roi_center(polygons[0]) if polygons else (320, 240)
+    
+    # Direction type can be configured - default to vertical (up/down)
+    try:
+        from core.models import SystemConfig
+        direction_type = SystemConfig.get_value('people_counting_direction', 'vertical') or 'vertical'
+        # For line crossing, also get in/out configuration
+        line_in_direction = SystemConfig.get_value('people_counting_line_in_direction', 'right_to_left') or 'right_to_left'
+    except:
+        direction_type = 'vertical'
+        line_in_direction = 'right_to_left'
+    
+    previous_snapshot_time = 0.0
+    current_time_pass = ""
+    frame_skip_counter = 0
+    
+    try:
+        while True:
+            try:
+                frame = frame_queue.get(timeout=1)  # Get frame from queue with timeout
+                if frame is None:
+                    continue
+                
+                # Skip every other frame to reduce processing load
+                frame_skip_counter += 1
+                if frame_skip_counter % 2 == 0:
+                    continue
+            except:
+                # Timeout or queue empty, continue to next iteration
+                continue
+
+            message_body = f"People counting on camera {cameraname} at {datetime.now().strftime('%d-%m-%y %H:%M:%S')}"
+
+            # Optimize frame resizing for smooth video - use standard sizes for MLPackage model
+            original_height, original_width = frame.shape[:2]
+            target_width = 640
+            target_height = target_height = original_height * target_width // original_width  # Standard 4:3 ratio that should be supported
+            #logger.info(f"Camera {cameraname} - Original frame size: {original_width}x{original_height}")
+            
+            # Always resize to standard size for MLPackage compatibility
+            frame = cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+            
+            # Calculate scaling factors for polygon coordinates
+            scale_x = target_width / original_width
+            scale_y = target_height / original_height
+            #logger.info(f"Camera {cameraname} - Resized to: {target_width}x{target_height}, scale factors: x={scale_x:.3f}, y={scale_y:.3f}")
+
+            # Handle ROI visualization and scaling
+            scaled_polygons = []
+            scaled_line_coords = None
+            
+            if line_coords:
+                # Scale line coordinates
+                scaled_line_coords = {
+                    'type': 'line',
+                    'x1': int(line_coords['x1'] * scale_x),
+                    'y1': int(line_coords['y1'] * scale_y),
+                    'x2': int(line_coords['x2'] * scale_x),
+                    'y2': int(line_coords['y2'] * scale_y)
+                }
+                # Draw the counting line
+                cv2.line(frame, 
+                        (scaled_line_coords['x1'], scaled_line_coords['y1']),
+                        (scaled_line_coords['x2'], scaled_line_coords['y2']),
+                        (0, 255, 0), 3)  # Green line
+                # Add line direction indicator
+                mid_x = (scaled_line_coords['x1'] + scaled_line_coords['x2']) // 2
+                mid_y = (scaled_line_coords['y1'] + scaled_line_coords['y2']) // 2
+                cv2.putText(frame, f"COUNT LINE ({direction_type})", 
+                           (mid_x - 50, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            elif len(polygons) > 0:
+                #logger.info(f"Camera {cameraname} - Drawing {len(polygons)} polygons with scale factors: x={scale_x:.3f}, y={scale_y:.3f}")
+                for polygon in enumerate(polygons):
+                    if polygon[1] is not None:
+                        # Scale polygon coordinates to match resized frame
+                        scaled_polygon = polygon[1].copy()
+                        scaled_polygon[:, 0, 0] = (scaled_polygon[:, 0, 0] * scale_x).astype(np.int32)
+                        scaled_polygon[:, 0, 1] = (scaled_polygon[:, 0, 1] * scale_y).astype(np.int32)
+                        scaled_polygons.append(scaled_polygon)
+                
+                # Draw ROI with transparent gray fill
+                draw_roi_polylines(frame, scaled_polygons, transparency=0.3)
+                
+                # Update scaled ROI center
+                roi_center = get_roi_center(scaled_polygons[0]) if scaled_polygons else (320, 240)
+
+            frame_height = frame.shape[0]
+            # Calculate position for text
+            x_position = 50  # Fixed padding from the left
+            y_position = frame_height - (50)  # Padding from the bottom of the frame
+
+            # Use direct tracking for better performance
+            
+            results = model.track(source=frame, persist=True, conf=0.3, verbose=False)
+
+            # Check if results contain boxes
+            if results and len(results) > 0 and results[0].boxes is not None:
+                person_count = sum(1 for track in results[0].boxes if int(track.cls.item()) == 0)
+                
+                # Get current cumulative counts for display
+                if camera_key in cumulative_counts:
+                    counts = cumulative_counts[camera_key]
+                    in_count = counts['in']
+                    out_count = counts['out']
+                    occupancy = counts['occupancy']
+                else:
+                    in_count = out_count = occupancy = 0
+                
+                # Draw counting statistics with better formatting - positioned at bottom left
+                frame_height = frame.shape[0]
+                
+                # Calculate bottom-left positions (from bottom up)
+                base_y = frame_height - 20  # 20 pixels from bottom
+                line_spacing = 25  # Space between lines
+                
+                draw_text_with_background(frame, f"Detected on Screen: {person_count} people", (10, base_y), 0.5, (255, 255, 255), (0, 0, 0), 0.1)
+                draw_text_with_background(frame, f"Occupancy: {occupancy}", (10, base_y - line_spacing), 0.5, (255, 255, 0), (0, 0, 0), 0.1)
+                draw_text_with_background(frame, f"Out: {out_count} people", (10, base_y - 2*line_spacing), 0.5, (0, 0, 255), (0, 0, 0), 0.1)
+                draw_text_with_background(frame, f"In: {in_count} people", (10, base_y - 3*line_spacing), 0.5, (0, 255, 0), (0, 0, 0), 0.1)
+
+                for track in results[0].boxes:
+                    x1, y1, x2, y2 = map(int, track.xyxy[0])
+                    cls_id = int(track.cls.item())
+                    confidence = track.conf.item()
+                    track_id = int(track.id.item()) if hasattr(track, 'id') and track.id is not None else -1
+
+                    # Only process people (class 0)
+                    if cls_id != 0:
+                        continue
+                    
+                    center_point = ((x1 + x2) // 2, (y1 + y2) // 2)
+                    
+                    # Check if center point is inside any of the ROI polygons (for polygon mode)
+                    current_inside_roi = False
+                    if scaled_polygons:
+                        for scaled_polygon in scaled_polygons:
+                            if is_point_in_polygon(center_point, scaled_polygon):
+                                current_inside_roi = True
+                                break
+                                    
+                    # Track person movement and detect direction
+                    if track_id != -1:  # Valid track ID
+                        # Get previous tracking data
+                        prev_data = people_tracks[camera_key].get(track_id, None)
+                        
+                        if prev_data is None:
+                            # First time seeing this person
+                            people_tracks[camera_key][track_id] = {
+                                'prev_center': center_point,
+                                'prev_inside_roi': current_inside_roi,
+                                'last_direction': None,
+                                'direction_confirmed': False,
+                                'frames_tracked': 1
+                            }
+                        else:
+                            # Update tracking data
+                            prev_center = prev_data['prev_center']
+                            prev_inside_roi = prev_data['prev_inside_roi']
+                            direction = None
+                            
+                            # Check crossing based on ROI type
+                            if scaled_line_coords:
+                                # Line crossing detection
+                                direction = check_line_crossing(
+                                    prev_center, center_point, scaled_line_coords, direction_type
+                                )
+                            elif scaled_polygons:
+                                # Polygon boundary crossing detection (original logic)
+                                boundary_crossed = has_crossed_roi_boundary(
+                                    prev_center, center_point, 
+                                    scaled_polygons[0] if scaled_polygons else None,
+                                    prev_inside_roi, current_inside_roi
+                                )
+                                
+                                if boundary_crossed:
+                                    # Calculate direction based on movement
+                                    direction = calculate_direction(
+                                        prev_center, center_point, roi_center, direction_type
+                                    )
+                            
+                            # Save counting event if direction detected and not already confirmed
+                            if direction and not prev_data.get('direction_confirmed', False):
+                                # Prepare tracking data for detailed logging
+                                tracking_data = {
+                                    'prev_center': prev_center,
+                                    'current_center': center_point,
+                                    'frames_tracked': prev_data.get('frames_tracked', 0)
+                                }
+                                
+                                # Save people counting event
+                                event = save_people_counting_event(
+                                    camera, track_id, direction, frame, roi_center, tracking_data
+                                )
+                                
+                                if event:
+                                    logger.info(f"Person {track_id} crossed {'line' if scaled_line_coords else 'boundary'}: {direction}")
+                                    logger.info(f"Position: {prev_center} -> {center_point}")
+                                    
+                                    # Mark as confirmed to avoid duplicate counts
+                                    people_tracks[camera_key][track_id]['direction_confirmed'] = True
+                                    people_tracks[camera_key][track_id]['last_direction'] = direction
+                            
+                            # Update tracking data
+                            people_tracks[camera_key][track_id].update({
+                                'prev_center': center_point,
+                                'prev_inside_roi': current_inside_roi,
+                                'frames_tracked': prev_data.get('frames_tracked', 0) + 1
+                            })
+                    
+                    # Draw bounding box with direction info if available
+                    cls_name = label_map[int(cls_id)]
+                    direction_info = ""
+                    if track_id in people_tracks[camera_key]:
+                        last_dir = people_tracks[camera_key][track_id].get('last_direction')
+                        if last_dir:
+                            direction_info = f" [{last_dir}]"
+                    
+                    draw_bounding_box(frame, track_id, cls_name + direction_info, confidence, x1, y1, x2, y2)
+                
+                # Clean up old tracks (remove tracks not seen for a while)
+                current_track_ids = set()
+                if results and len(results) > 0 and results[0].boxes is not None:
+                    for track in results[0].boxes:
+                        if int(track.cls.item()) == 0:  # Only people
+                            track_id = int(track.id.item()) if hasattr(track, 'id') and track.id is not None else -1
+                            if track_id != -1:
+                                current_track_ids.add(track_id)
+                
+                # Remove tracks not seen in current frame
+                tracks_to_remove = []
+                for track_id in people_tracks[camera_key]:
+                    if track_id not in current_track_ids:
+                        people_tracks[camera_key][track_id]['frames_tracked'] += 1
+                        # Remove if not seen for 30 frames
+                        if people_tracks[camera_key][track_id]['frames_tracked'] > 30:
+                            tracks_to_remove.append(track_id)
+                
+                for track_id in tracks_to_remove:
+                    del people_tracks[camera_key][track_id]
+            else:
+                # No detections, show current counts
+                if camera_key in cumulative_counts:
+                    counts = cumulative_counts[camera_key]
+                    in_count = counts['in']
+                    out_count = counts['out']
+                    occupancy = counts['occupancy']
+                else:
+                    in_count = out_count = occupancy = 0
+                
+                # Draw counting statistics with better formatting
+                # Calculate bottom-left positions (from bottom up)
+                frame_height = frame.shape[0]
+                base_y = frame_height - 20  # 20 pixels from bottom
+                line_spacing = 25  # Space between lines
+                
+                draw_text_with_background(frame, f"In: {in_count} people", (10, base_y - 3*line_spacing), 0.5, (0, 255, 0), (0, 0, 0), 0.1)
+                draw_text_with_background(frame, f"Out: {out_count} people", (10, base_y - 2*line_spacing), 0.5, (0, 0, 255), (0, 0, 0), 0.1)
+                draw_text_with_background(frame, f"Occupancy: {occupancy}", (10, base_y - line_spacing), 0.5, (255, 255, 0), (0, 0, 0), 0.1)
+                
+                draw_text_with_background(frame, 'No people detected', (10, base_y), 0.5, (255, 255, 255), (0, 0, 0), 0.1)
+
+            # Stream frame as MJPEG with optimized settings
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])  # Balanced quality/speed
+            if not ret:
+                logger.error("Failed to encode frame.")
+                continue
+
+            frame = buffer.tobytes()
+            
+            # Create larger chunk to force immediate transmission
+            chunk = (b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n'
+                    b'Content-Length: ' + str(len(frame)).encode() + b'\r\n\r\n' 
+                    + frame + b'\r\n\r\n')
+            
+            yield chunk
+            
+            # Force a small delay to prevent overwhelming the connection
+            time.sleep(0.033)  # ~30 FPS
+
+    except RuntimeError as e:
+        logger.error(f"Runtime error: {e}")
+    except Exception as e:
+        logger.error(f"Stream processing error: {e}")
+    finally:
+        # Cleanup
+        connection_status['stop_requested'] = True
+        try:
+            # Clear any remaining frames in queue
+            while not frame_queue.empty():
+                frame_queue.get_nowait()
+        except:
+            pass
+        cv2.destroyAllWindows()
+        logger.info(f"Detection stream stopped for camera {camera.name}")
+        
+def draw_text_with_background(frame, text, position, font_scale=0.5, font_color=(255, 255, 255), bg_color=(0, 0, 0), transparency=0.9):
+    """Draw text with semi-transparent background"""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 1
+    
+    # Get text size
+    text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+    text_width, text_height = text_size
+    
+    # Calculate background rectangle coordinates
+    x, y = position
+    padding = 5
+    bg_x1 = x - padding
+    bg_y1 = y - text_height - padding
+    bg_x2 = x + text_width + padding
+    bg_y2 = y + padding
+    
+    # Create overlay for transparency
+    overlay = frame.copy()
+    
+    # Draw background rectangle
+    cv2.rectangle(overlay, (bg_x1, bg_y1), (bg_x2, bg_y2), bg_color, -1)
+    
+    # Apply transparency
+    cv2.addWeighted(overlay, 1 - transparency, frame, transparency, 0, frame)
+    
+    # Draw text
+    cv2.putText(frame, text, position, font, font_scale, font_color, thickness)

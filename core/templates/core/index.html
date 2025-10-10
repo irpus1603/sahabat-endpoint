@@ -1,0 +1,1324 @@
+{% extends 'core/base.html' %}
+
+{% block extra_css %}
+<style>
+/* Clickable camera status badges */
+.camera-status-toggle {
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.camera-status-toggle:hover {
+    transform: scale(1.05);
+    filter: brightness(1.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.camera-status-toggle:active {
+    transform: scale(0.95);
+}
+
+/* Loading state for status badges */
+.camera-status-toggle[style*="pointer-events: none"] {
+    opacity: 0.7;
+    cursor: wait !important;
+}
+</style>
+{% endblock %}
+
+{% block title %}Dashboard - SOCA Edge{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Real-time surveillance monitoring{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-camera-video-fill {% if active_cameras == total_cameras %}text-success{% elif active_cameras > 0 %}text-warning{% else %}text-danger{% endif %} fs-2"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="row">
+                            <div class="col">
+                                <h6 class="card-title text-muted mb-0">Active Cameras</h6>
+                                <h3 class="mb-0">{{ active_cameras }}/{{ total_cameras }}</h3>
+                                {% if inactive_cameras > 0 %}
+                                    <small class="text-danger">{{ inactive_cameras }} offline</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-exclamation-triangle-fill {% if critical_alerts > 0 %}text-danger{% elif high_alerts > 0 %}text-warning{% elif total_alerts > 0 %}text-info{% else %}text-success{% endif %} fs-2"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="row">
+                            <div class="col">
+                                <h6 class="card-title text-muted mb-0">Active Alerts</h6>
+                                <h3 class="mb-0">{{ total_alerts }}</h3>
+                                {% if critical_alerts > 0 %}
+                                    <small class="text-danger">{{ critical_alerts }} critical</small>
+                                {% elif high_alerts > 0 %}
+                                    <small class="text-warning">{{ high_alerts }} high</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-search {% if today_detections > 10 %}text-success{% elif today_detections > 0 %}text-info{% else %}text-muted{% endif %} fs-2"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="row">
+                            <div class="col">
+                                <h6 class="card-title text-muted mb-0">Detections Today</h6>
+                                <h3 class="mb-0">{{ today_detections }}</h3>
+                                <small class="text-muted">Since midnight</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <i class="bi bi-cpu {% if system_load < 50 %}text-success{% elif system_load < 80 %}text-warning{% else %}text-danger{% endif %} fs-2"></i>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="row">
+                            <div class="col">
+                                <h6 class="card-title text-muted mb-0">System Load</h6>
+                                <h3 class="mb-0">{{ system_load }}%</h3>
+                                <small class="text-muted">Based on {{ active_cameras }} streams</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Live Camera Feeds -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-camera-video me-2"></i>
+                    Live Camera Feeds
+                </h5>
+                <small class="text-muted">{{ active_cameras }}/{{ total_cameras }} cameras online</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for camera in active_cameras_list %}
+                    <div class="col-md-6 col-lg-3 mb-3">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                                <small class="text-muted" title="{{ camera.rtsp_url }}">{{ camera.name|default:"Unknown Camera" }}</small>
+                                {% if camera.is_active %}
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-circle-fill me-1"></i>Active
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-x-circle-fill me-1"></i>Offline
+                                    </span>
+                                {% endif %}
+                            </div>
+                            <div class="card-body p-2">
+                                {% if camera.is_active %}
+                                    <div class="position-relative bg-dark rounded overflow-hidden" style="height: 200px;">
+                                        <!-- Video Stream Container -->
+                                        <div class="video-container w-100 h-100" data-camera-id="{{ camera.id }}" data-rtsp-url="{{ camera.rtsp_url }}">
+                                            <!-- Loading State -->
+                                            <div class="stream-loading d-flex flex-column align-items-center justify-content-center h-100 text-white">
+                                                <div class="spinner-border text-primary mb-2" role="status">
+                                                    <span class="visually-hidden">Loading stream...</span>
+                                                </div>
+                                                <p class="mb-0">Connecting to camera...</p>
+                                                <small class="text-muted">{{ camera.name }}</small>
+                                            </div>
+                                            
+                                            <!-- Video Player (Will be populated by JavaScript) -->
+                                            <video class="stream-video w-100 h-100 d-none" 
+                                                   id="video-{{ camera.id }}" 
+                                                   autoplay 
+                                                   muted 
+                                                   playsinline
+                                                   style="object-fit: cover;">
+                                            </video>
+                                            
+                                            <!-- Error State -->
+                                            <div class="stream-error d-none d-flex flex-column align-items-center justify-content-center h-100 text-white">
+                                                <i class="bi bi-exclamation-triangle fs-3 text-warning mb-2"></i>
+                                                <p class="mb-0">Stream Unavailable</p>
+                                                <small class="text-muted">Connection failed</small>
+                                                <button class="btn btn-sm btn-outline-primary mt-2 retry-stream" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Stream Overlays -->
+                                        <div class="position-absolute top-0 end-0 m-2">
+                                            <span class="badge bg-danger pulse recording-indicator">
+                                                <i class="bi bi-record-circle me-1"></i>LIVE
+                                            </span>
+                                        </div>
+                                        
+                                        
+                                        <!-- Stream Quality Indicator -->
+                                        <div class="position-absolute top-0 start-0 m-2">
+                                            <span class="badge bg-success stream-quality" id="quality-{{ camera.id }}">
+                                                <i class="bi bi-wifi me-1"></i>HD
+                                            </span>
+                                        </div>
+                                        
+                                        <!-- Stream Controls -->
+                                        <div class="position-absolute bottom-0 end-0 m-2">
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-dark btn-sm toggle-fullscreen" data-camera-id="{{ camera.id }}" title="Fullscreen">
+                                                    <i class="bi bi-fullscreen"></i>
+                                                </button>
+                                                <button class="btn btn-dark btn-sm toggle-mute" data-camera-id="{{ camera.id }}" title="Toggle Audio">
+                                                    <i class="bi bi-volume-mute"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="bg-secondary text-white text-center rounded d-flex flex-column align-items-center justify-content-center" style="height: 200px;">
+                                        <i class="bi bi-camera-video-off fs-3 text-muted mb-2"></i>
+                                        <p class="mb-1">Camera Offline</p>
+                                        <small class="text-light opacity-75">
+                                            Since {{ camera.created_at|timesince }}
+                                        </small>
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-sm btn-outline-warning mt-2">
+                                            <i class="bi bi-gear me-1"></i>Configure
+                                        </a>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="card-footer bg-light py-1">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">ID: {{ camera.id }}</small>
+                                    {% if camera.is_active %}
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-gear"></i>
+                                        </a>
+                                    {% else %}
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-sm btn-outline-warning">
+                                            <i class="bi bi-exclamation-triangle"></i>
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-12">
+                        <div class="alert alert-warning text-center">
+                            <i class="bi bi-camera-video-off me-2"></i>
+                            No cameras configured. <a href="{% url 'camera_add' %}" class="alert-link">Add your first camera</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                {% if all_cameras|length < 4 %}
+                <div class="text-center mt-3">
+                    <a href="{% url 'camera_add' %}" class="btn btn-outline-primary">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Add New Camera
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts and Detections -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Recent Alerts
+                </h5>
+                {% if total_alerts > 0 %}
+                    <span class="badge bg-danger">{{ total_alerts }}</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if recent_alerts %}
+                    <div class="list-group list-group-flush">
+                        {% for alert in recent_alerts %}
+                        <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                            <div class="ms-2 me-auto">
+                                <div class="fw-bold">{{ alert.message|truncatechars:50 }}</div>
+                                <small class="text-muted">
+                                    <i class="bi bi-camera me-1"></i>{{ alert.camera.name|default:"Unknown Camera" }}
+                                    {% if alert.detection %}
+                                        • <i class="bi bi-search me-1"></i>Detection #{{ alert.detection.id }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                {% if alert.severity == 'critical' %}
+                                    <span class="badge bg-danger rounded-pill">Critical</span>
+                                {% elif alert.severity == 'high' %}
+                                    <span class="badge bg-warning rounded-pill">High</span>
+                                {% elif alert.severity == 'medium' %}
+                                    <span class="badge bg-info rounded-pill">Medium</span>
+                                {% else %}
+                                    <span class="badge bg-secondary rounded-pill">Low</span>
+                                {% endif %}
+                                <br>
+                                <small class="text-muted">{{ alert.created_at|timesince }} ago</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-check-circle-fill text-success fs-1"></i>
+                        <p class="mt-2 mb-0">No recent alerts</p>
+                        <small>System is operating normally</small>
+                    </div>
+                {% endif %}
+                
+                <div class="text-center mt-3">
+                    <a href="{% url 'alerts' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-list-ul me-1"></i>View All Alerts
+                    </a>
+                    {% if total_alerts > 0 %}
+                        <button type="button" class="btn btn-outline-success btn-sm ms-2" onclick="acknowledgeAllAlerts()">
+                            <i class="bi bi-check-all me-1"></i>Acknowledge All
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-activity me-2"></i>
+                    Recent Activity
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_detections %}
+                    <div class="list-group list-group-flush">
+                        {% for detection in recent_detections %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center border-0 px-0">
+                            <div>
+                                <div class="fw-bold">
+                                    <i class="bi bi-search text-info me-2"></i>
+                                    Detection Recorded
+                                </div>
+                                <small class="text-muted">
+                                    {{ detection.description|truncatechars:60 }}
+                                    <br>
+                                    <i class="bi bi-camera me-1"></i>{{ detection.camera.name }}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                <small class="text-muted">{{ detection.timestamp|timesince }} ago</small>
+                                {% if detection.annotated_snapshot_path %}
+                                    <br>
+                                    <a href="#" class="btn btn-sm btn-outline-secondary" title="View snapshot">
+                                        <i class="bi bi-image"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-clock fs-1"></i>
+                        <p class="mt-2 mb-0">No recent activity</p>
+                        <small>Waiting for detections...</small>
+                    </div>
+                {% endif %}
+                
+                <!-- System Statistics -->
+                <div class="mt-4 pt-3 border-top">
+                    <h6 class="fw-bold mb-3">System Statistics</h6>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="text-info">
+                                <i class="bi bi-eye-fill"></i>
+                                <div class="small text-muted">Sensitivity</div>
+                                <strong>{{ detection_sensitivity }}</strong>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-success">
+                                <i class="bi bi-hdd-fill"></i>
+                                <div class="small text-muted">Storage</div>
+                                <strong>OK</strong>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-primary">
+                                <i class="bi bi-wifi"></i>
+                                <div class="small text-muted">Network</div>
+                                <strong>Good</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- HLS.js for HLS streaming support -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+// Camera data - build directly from DOM to avoid template issues
+const cameraData = [];
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Building camera data from DOM...');
+    const containers = document.querySelectorAll('[data-camera-id]');
+    console.log('Found containers:', containers.length);
+    
+    containers.forEach(container => {
+        const id = container.getAttribute('data-camera-id');
+        const nameElement = container.closest('.card').querySelector('.text-muted');
+        const name = nameElement ? nameElement.textContent.trim() : `Camera ${id}`;
+        
+        if (id) {
+            cameraData.push({
+                id: parseInt(id),
+                name: name,
+                active: true
+            });
+            console.log(`Added camera ${id}: ${name}`);
+        }
+    });
+    console.log('Final camera data:', cameraData);
+    
+    // Initialize streams after DOM is ready and camera data is built
+    setTimeout(() => {
+        initializeStreams();
+    }, 100);
+});
+
+// Stream management
+let streams = new Map();
+let reconnectAttempts = new Map();
+const MAX_RECONNECT_ATTEMPTS = 3;
+
+
+// Initialize video streams
+function initializeStreams() {
+    console.log(`Starting HLS initialization. Found ${cameraData.length} cameras in cameraData:`, cameraData);
+    
+    if (cameraData.length === 0) {
+        console.warn('No camera data found! Checking for active cameras in DOM...');
+        // Fallback: look for video containers in DOM
+        const containers = document.querySelectorAll('[data-camera-id]');
+        console.log(`Found ${containers.length} video containers in DOM`);
+    }
+    
+    cameraData.forEach((camera) => {
+        console.log(`Processing camera:`, camera);
+        if (camera.active) {
+            console.log(`Initializing camera ${camera.id}: ${camera.name}`);
+            // Initialize HLS streams directly - no need for delays
+            initializeCameraStream(camera);
+        } else {
+            console.log(`Skipping inactive camera ${camera.id}: ${camera.name}`);
+        }
+    });
+}
+
+function initializeCameraStream(camera) {
+    console.log(`initializeCameraStream called for camera ${camera.id}: ${camera.name}`);
+    
+    const container = document.querySelector(`[data-camera-id="${camera.id}"]`);
+    if (!container) {
+        console.error(`No container found for camera ${camera.id}! Selector: [data-camera-id="${camera.id}"]`);
+        // Debug: show all data-camera-id elements
+        const allContainers = document.querySelectorAll('[data-camera-id]');
+        console.log('All containers with data-camera-id:', Array.from(allContainers).map(c => c.getAttribute('data-camera-id')));
+        return;
+    }
+    
+    console.log(`Found container for camera ${camera.id}:`, container);
+    console.log(`Container HTML:`, container.outerHTML.substring(0, 200) + '...');
+    
+    // Debug: check what child elements exist
+    const children = container.children;
+    console.log(`Container children for camera ${camera.id}:`, Array.from(children).map(c => c.className));
+    
+    // Show loading state
+    showStreamState(container, 'loading');
+    
+    console.log(`Initializing HLS stream for camera ${camera.id}: ${camera.name}`);
+    
+    // Generate HLS URL directly
+    const hlsUrl = `{{mediamtx_ip}}:8888/${encodeURIComponent(camera.name)}/index.m3u8`;
+    console.log(`HLS URL for camera ${camera.id}: ${hlsUrl}`);
+    
+    // Initialize HLS stream directly
+    initializeHLSStream(camera, container, hlsUrl);
+}
+
+
+function initializeHLSStream(camera, container, hlsUrl) {
+    console.log(`🎬 initializeHLSStream for camera ${camera.id} (${camera.name})`);
+    console.log(`Container:`, container);
+    
+    const video = container.querySelector('.stream-video');
+    console.log(`Video element found:`, video);
+    
+    if (!video) {
+        console.error(`❌ No video element found in container for camera ${camera.id}`);
+        handleStreamError(camera, container, 'Video element not found');
+        return;
+    }
+    
+    console.log(`Video element attributes:`, {
+        id: video.id,
+        className: video.className,
+        autoplay: video.autoplay,
+        muted: video.muted,
+        playsinline: video.playsinline
+    });
+    
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 30,
+            maxBufferLength: 60,
+            maxMaxBufferLength: 600,
+            startLevel: -1,
+            autoStartLoad: true
+        });
+        
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            console.log(`HLS manifest parsed for camera ${camera.id} (${camera.name}), attempting to play...`);
+            console.log(`Video element:`, video);
+            console.log(`Video readyState:`, video.readyState);
+            
+            video.play().then(() => {
+                console.log(`✅ Video playback started for camera ${camera.id} (${camera.name})`);
+                showStreamState(container, 'playing');
+                updateStreamQuality(camera.id, determineQuality(hls.currentLevel));
+                console.log(`Video is now playing - dimensions: ${video.videoWidth}x${video.videoHeight}`);
+            }).catch(error => {
+                console.error(`❌ Video play failed for camera ${camera.id} (${camera.name}):`, error);
+                console.log(`Video element state:`, {
+                    paused: video.paused,
+                    muted: video.muted,
+                    autoplay: video.autoplay,
+                    readyState: video.readyState
+                });
+                handleStreamError(camera, container, 'Video playback failed');
+            });
+        });
+        
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            console.warn(`HLS error for camera ${camera.id} (${camera.name}):`, data);
+            
+            if (data.fatal) {
+                console.log(`Fatal HLS error for camera ${camera.id}, attempting recovery...`);
+                
+                // Try to recover from certain errors automatically
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    if (data.response && data.response.code === 404) {
+                        // Stream temporarily unavailable, retry after short delay
+                        setTimeout(() => {
+                            console.log(`Retrying stream for camera ${camera.id} after 404 error`);
+                            hls.startLoad();
+                        }, 2000);
+                    } else {
+                        // Network error, try to reload the source
+                        setTimeout(() => {
+                            console.log(`Reloading source for camera ${camera.id} after network error`);
+                            hls.loadSource(hlsUrl);
+                        }, 3000);
+                    }
+                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    // Try to recover from media errors
+                    console.log(`Attempting media error recovery for camera ${camera.id}`);
+                    try {
+                        hls.recoverMediaError();
+                    } catch (e) {
+                        console.error(`Media recovery failed for camera ${camera.id}:`, e);
+                        // If recovery fails, show error after delay
+                        setTimeout(() => {
+                            handleStreamError(camera, container, 'Video format not supported');
+                        }, 1000);
+                    }
+                } else {
+                    // Other fatal errors
+                    setTimeout(() => {
+                        handleStreamError(camera, container, 'Stream connection lost');
+                    }, 1000);
+                }
+            } else {
+                // Non-fatal errors, log but don't interrupt stream
+                console.info(`Non-fatal HLS error for camera ${camera.id}:`, data.details);
+            }
+        });
+        
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            // Only update quality if it's a significant change (debounce rapid switches)
+            const newQuality = determineQuality(data.level);
+            const currentQualityElement = document.getElementById(`quality-${camera.id}`);
+            if (currentQualityElement && !currentQualityElement.textContent.includes(newQuality)) {
+                updateStreamQuality(camera.id, newQuality);
+            }
+        });
+        
+        streams.set(camera.id, { type: 'hls', instance: hls, url: hlsUrl });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        video.src = hlsUrl;
+        video.addEventListener('loadedmetadata', () => {
+            showStreamState(container, 'playing');
+            updateStreamQuality(camera.id, 'HD');
+            console.log(`Native HLS stream started for camera ${camera.id}`);
+        });
+        
+        video.addEventListener('error', (e) => {
+            console.error(`Native HLS error for camera ${camera.id}:`, e);
+            handleStreamError(camera, container, 'HLS playback error');
+        });
+        
+        streams.set(camera.id, { type: 'native-hls', video: video, url: hlsUrl });
+    } else {
+        throw new Error('HLS not supported in this browser');
+    }
+}
+
+
+function determineQuality(level) {
+    // Determine quality based on stream level/bitrate
+    // For HLS adaptive streaming, level -1 means auto-selection
+    if (level === -1) {
+        return 'HD'; // Default to HD for auto mode to avoid fluctuation
+    }
+    if (level >= 0) {
+        return level > 2 ? 'FHD' : level > 1 ? 'HD' : 'SD';
+    }
+    return 'HD'; // Default fallback
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showStreamState(container, state) {
+    if (!container) {
+        console.error('showStreamState: container is null');
+        return;
+    }
+    
+    const loading = container.querySelector('.stream-loading');
+    const video = container.querySelector('.stream-video');
+    const error = container.querySelector('.stream-error');
+    
+    // Debug what we found
+    console.log(`showStreamState for ${state}:`, {
+        container: container,
+        loading: loading,
+        video: video,
+        error: error
+    });
+    
+    // Hide all states (with null checks)
+    if (loading) loading.classList.add('d-none');
+    if (video) video.classList.add('d-none');
+    if (error) error.classList.add('d-none');
+    
+    // Show requested state
+    switch(state) {
+        case 'loading':
+            if (loading) {
+                loading.classList.remove('d-none');
+            } else {
+                console.error('Loading element not found in container');
+            }
+            break;
+        case 'playing':
+            if (video) {
+                video.classList.remove('d-none');
+            } else {
+                console.error('Video element not found in container');
+            }
+            break;
+        case 'error':
+            if (error) {
+                error.classList.remove('d-none');
+            } else {
+                console.error('Error element not found in container');
+            }
+            break;
+    }
+}
+
+function handleStreamError(camera, container, errorMessage = 'Stream unavailable') {
+    showStreamState(container, 'error');
+    updateStreamQuality(camera.id, 'ERROR');
+    
+    const attempts = reconnectAttempts.get(camera.id) || 0;
+    reconnectAttempts.set(camera.id, attempts + 1);
+    
+    console.error(`Stream error for camera ${camera.id}: ${errorMessage}. Attempt ${attempts + 1}/${MAX_RECONNECT_ATTEMPTS}`);
+    
+    // Update error message in the UI
+    const errorElement = container.querySelector('.stream-error p');
+    if (errorElement) {
+        errorElement.textContent = errorMessage;
+    }
+    
+    // Auto-retry if under max attempts and not a fatal error
+    if (attempts < MAX_RECONNECT_ATTEMPTS && !errorMessage.includes('Fatal') && !errorMessage.includes('not supported')) {
+        const retryDelay = Math.pow(2, attempts) * 1000; // Exponential backoff
+        console.log(`Auto-retry for camera ${camera.id} in ${retryDelay}ms`);
+        
+        setTimeout(() => {
+            retryStream(camera.id);
+        }, retryDelay);
+    }
+}
+
+function updateStreamQuality(cameraId, quality) {
+    const qualityElement = document.getElementById(`quality-${cameraId}`);
+    if (qualityElement) {
+        const icon = qualityElement.querySelector('i');
+        const qualityMap = {
+            'FHD': { text: 'FHD', class: 'bg-success', icon: 'bi-wifi' },
+            'HD': { text: 'HD', class: 'bg-primary', icon: 'bi-wifi' },
+            'SD': { text: 'SD', class: 'bg-warning', icon: 'bi-wifi' },
+            'ERROR': { text: 'ERR', class: 'bg-danger', icon: 'bi-wifi-off' }
+        };
+        
+        const config = qualityMap[quality] || qualityMap['SD'];
+        qualityElement.className = `badge ${config.class} stream-quality`;
+        qualityElement.innerHTML = `<i class="bi ${config.icon} me-1"></i>${config.text}`;
+    }
+}
+
+// Stream control functions
+function retryStream(cameraId) {
+    const camera = cameraData.find(c => c.id === cameraId);
+    if (camera) {
+        // Stop existing stream
+        stopStream(cameraId);
+        
+        // Reset reconnect attempts
+        reconnectAttempts.set(cameraId, 0);
+        
+        // Reinitialize
+        setTimeout(() => {
+            initializeCameraStream(camera);
+        }, 1000);
+    }
+}
+
+function stopStream(cameraId) {
+    const streamData = streams.get(cameraId);
+    if (streamData) {
+        console.log(`Stopping ${streamData.type} stream for camera ${cameraId}`);
+        
+        switch(streamData.type) {
+            case 'hls':
+                if (streamData.instance) {
+                    streamData.instance.destroy();
+                }
+                break;
+            case 'native-hls':
+                if (streamData.video) {
+                    streamData.video.pause();
+                    streamData.video.src = '';
+                    streamData.video.load();
+                }
+                break;
+        }
+        streams.delete(cameraId);
+    }
+}
+
+function toggleFullscreen(cameraId) {
+    console.log('Opening fullscreen window for camera', cameraId);
+    
+    // Find camera data
+    const camera = cameraData.find(c => c.id === cameraId);
+    if (!camera) {
+        console.error('Camera not found:', cameraId);
+        return;
+    }
+    
+    // Generate HLS URL
+    const hlsUrl = `{{mediamtx_ip}}:8888/${encodeURIComponent(camera.name)}/index.m3u8`;
+
+    // Calculate window dimensions (16:9 aspect ratio with height 640)
+    const windowHeight = 640;
+    const windowWidth = Math.round(windowHeight * 16 / 9); // ~1138px for 16:9 ratio
+    
+    // Center the window on screen
+    const screenWidth = window.screen.availWidth;
+    const screenHeight = window.screen.availHeight;
+    const left = Math.round((screenWidth - windowWidth) / 2);
+    const top = Math.round((screenHeight - windowHeight) / 2);
+    
+    // Open popup window first
+    const popup = window.open(
+        '',
+        'camera-' + cameraId + '-fullscreen',
+        'width=' + windowWidth + ',height=' + windowHeight + ',left=' + left + ',top=' + top + ',scrollbars=no,resizable=yes,status=no,toolbar=no,menubar=no,location=no'
+    );
+    
+    if (popup) {
+        // Create a simple popup content
+        const htmlContent = [
+            '<!DOCTYPE html>',
+            '<html><head>',
+            '<meta charset="UTF-8">',
+            '<title>' + camera.name + ' - Live Stream</title>',
+            '<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>',
+            '<style>',
+            'body { margin: 0; padding: 0; background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }',
+            '.video-container { position: relative; width: 100%; height: 100vh; display: flex; justify-content: center; align-items: center; }',
+            'video { width: 100%; height: 100%; object-fit: contain; }',
+            '.loading { position: absolute; color: white; text-align: center; }',
+            '.error { position: absolute; color: #ff6b6b; text-align: center; }',
+            '<\/style><\/head><body>',
+            '<div class="video-container">',
+            '<div class="loading" id="loading"><h3>Loading ' + camera.name + '<\/h3><p>Connecting to HLS stream...<\/p><\/div>',
+            '<div class="error" id="error" style="display: none;"><h3>Stream Error<\/h3><p id="error-message">Failed to load stream<\/p><\/div>',
+            '<video id="video" autoplay muted playsinline style="display: none;"><\/video>',
+            '<\/div><\/body><\/html>'
+        ].join('');
+        
+        popup.document.write(htmlContent);
+        popup.document.close();
+        
+        // Wait for popup to load and then initialize HLS
+        setTimeout(function() {
+            const video = popup.document.getElementById('video');
+            const loading = popup.document.getElementById('loading');
+            const error = popup.document.getElementById('error');
+            const errorMessage = popup.document.getElementById('error-message');
+            
+            function showError(message) {
+                if (loading) loading.style.display = 'none';
+                if (video) video.style.display = 'none';
+                if (error) error.style.display = 'block';
+                if (errorMessage) errorMessage.textContent = message;
+            }
+            
+            function showVideo() {
+                if (loading) loading.style.display = 'none';
+                if (error) error.style.display = 'none';
+                if (video) video.style.display = 'block';
+            }
+            
+            // Wait for HLS.js to load in popup
+            function initializeHLS() {
+                if (typeof popup.Hls !== 'undefined' && popup.Hls.isSupported()) {
+                    const hls = new popup.Hls({
+                        enableWorker: true,
+                        lowLatencyMode: true,
+                        backBufferLength: 30,
+                        maxBufferLength: 60,
+                        autoStartLoad: true
+                    });
+                    
+                    hls.loadSource(hlsUrl);
+                    hls.attachMedia(video);
+                    
+                    hls.on(popup.Hls.Events.MANIFEST_PARSED, function() {
+                        video.play().then(function() {
+                            showVideo();
+                            console.log('HLS stream started in popup');
+                        }).catch(function(err) {
+                            console.error('Video play failed:', err);
+                            showError('Video playback failed');
+                        });
+                    });
+                    
+                    hls.on(popup.Hls.Events.ERROR, function(event, data) {
+                        console.error('HLS error:', data);
+                        if (data.fatal) {
+                            let errorMsg = 'HLS stream unavailable';
+                            if (data.type === popup.Hls.ErrorTypes.NETWORK_ERROR) {
+                                errorMsg = 'Camera offline or MediaMTX not running';
+                            } else if (data.type === popup.Hls.ErrorTypes.MEDIA_ERROR) {
+                                errorMsg = 'Video format not supported';
+                            }
+                            showError(errorMsg);
+                        }
+                    });
+                    
+                } else if (video && video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = hlsUrl;
+                    video.addEventListener('loadedmetadata', function() {
+                        showVideo();
+                        console.log('Native HLS stream started in popup');
+                    });
+                    
+                    video.addEventListener('error', function(e) {
+                        console.error('Native HLS error:', e);
+                        showError('HLS playback error');
+                    });
+                } else {
+                    showError('HLS not supported in this browser');
+                }
+            }
+            
+            // Check if HLS.js is loaded, if not wait a bit more
+            if (typeof popup.Hls !== 'undefined') {
+                initializeHLS();
+            } else {
+                setTimeout(initializeHLS, 1000);
+            }
+            
+            // Close window with Escape key
+            if (popup.document) {
+                popup.document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        popup.close();
+                    }
+                });
+            }
+        }, 500);
+        
+        popup.focus();
+    } else {
+        alert('Popup blocked! Please allow popups for this site to view fullscreen cameras.');
+    }
+}
+
+function toggleMute(cameraId) {
+    const video = document.getElementById(`video-${cameraId}`);
+    if (video) {
+        video.muted = !video.muted;
+        const button = document.querySelector(`[data-camera-id="${cameraId}"].toggle-mute`);
+        const icon = button.querySelector('i');
+        
+        if (video.muted) {
+            icon.className = 'bi bi-volume-mute';
+            button.title = 'Unmute';
+        } else {
+            icon.className = 'bi bi-volume-up';
+            button.title = 'Mute';
+        }
+    }
+}
+
+// System status functions
+async function refreshSystemStatus() {
+    try {
+        const response = await fetch('/api/system-status/', {
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch system status');
+        }
+        
+        const data = await response.json();
+        
+        // Update dashboard statistics
+        updateDashboardStats(data);
+        
+        // Check camera health
+        await checkCameraHealth();
+        
+    } catch (error) {
+        console.error('Error refreshing system status:', error);
+    }
+}
+
+function updateDashboardStats(data) {
+    // Update camera statistics
+    const cameraStatElement = document.querySelector('h3');
+    if (cameraStatElement && data.camera_stats) {
+        cameraStatElement.textContent = `${data.camera_stats.active}/${data.camera_stats.total}`;
+    }
+    
+    // Update other statistics if available
+    if (data.alerts_count !== undefined) {
+        const alertsElement = document.querySelector('[data-stat="alerts"]');
+        if (alertsElement) alertsElement.textContent = data.alerts_count;
+    }
+    
+    if (data.detections_today !== undefined) {
+        const detectionsElement = document.querySelector('[data-stat="detections"]');
+        if (detectionsElement) detectionsElement.textContent = data.detections_today;
+    }
+    
+    if (data.system_load !== undefined) {
+        const loadElement = document.querySelector('[data-stat="load"]');
+        if (loadElement) loadElement.textContent = `${data.system_load}%`;
+    }
+}
+
+async function checkCameraHealth() {
+    // Check HLS stream availability for active cameras
+    const healthPromises = cameraData.map(async (camera) => {
+        if (camera.active && streams.has(camera.id)) {
+            try {
+                const hlsUrl = `{{mediamtx_ip}}:8888/${encodeURIComponent(camera.name)}/index.m3u8`;
+                const response = await fetch(hlsUrl, { method: 'GET', timeout: 5000 });
+                
+                // Update stream quality based on HLS availability (not camera status)
+                if (response.ok) {
+                    updateStreamQuality(camera.id, 'HD');
+                } else {
+                    updateStreamQuality(camera.id, 'ERROR');
+                }
+            } catch (error) {
+                console.warn(`HLS health check failed for camera ${camera.id}:`, error);
+                updateStreamQuality(camera.id, 'ERROR');
+            }
+        }
+    });
+    
+    // Wait for all health checks to complete (with timeout)
+    try {
+        await Promise.allSettled(healthPromises);
+    } catch (error) {
+        console.error('Health check batch failed:', error);
+    }
+}
+
+// Camera status toggle functionality
+function toggleCameraStatus(cameraId, currentStatus) {
+    const statusBadge = document.querySelector(`[data-camera-id="${cameraId}"].camera-status-toggle`);
+    if (!statusBadge) return;
+    
+    // Show loading state
+    const originalContent = statusBadge.innerHTML;
+    statusBadge.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Updating...';
+    statusBadge.style.pointerEvents = 'none';
+    
+    const newStatus = !currentStatus;
+    
+    // Send AJAX request to toggle status
+    fetch(`/cameras/edit/${cameraId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `is_active=${newStatus ? 'true' : 'false'}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update badge appearance
+            if (newStatus) {
+                statusBadge.className = 'badge bg-success camera-status-toggle';
+                statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>Active';
+                statusBadge.title = 'Click to disable camera';
+                statusBadge.setAttribute('data-current-status', 'true');
+            } else {
+                statusBadge.className = 'badge bg-danger camera-status-toggle';
+                statusBadge.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Offline';
+                statusBadge.title = 'Click to enable camera';
+                statusBadge.setAttribute('data-current-status', 'false');
+            }
+            
+            // Refresh the camera feed if it was activated
+            if (newStatus) {
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                // Stop the stream if camera was deactivated
+                stopStream(cameraId);
+                const container = document.querySelector(`[data-camera-id="${cameraId}"]`);
+                if (container) {
+                    container.style.display = 'none';
+                }
+            }
+            
+            console.log(`Camera ${cameraId} status toggled to: ${newStatus ? 'Active' : 'Offline'}`);
+        } else {
+            throw new Error(data.message || 'Failed to update camera status');
+        }
+    })
+    .catch(error => {
+        console.error('Failed to toggle camera status:', error);
+        // Restore original content on error
+        statusBadge.innerHTML = originalContent;
+        alert('Failed to update camera status. Please try again.');
+    })
+    .finally(() => {
+        statusBadge.style.pointerEvents = 'auto';
+    });
+}
+
+// TEMPORARILY DISABLED - Add event listeners for status toggle
+// document.addEventListener('DOMContentLoaded', function() {
+//     document.addEventListener('click', function(e) {
+//         if (e.target.closest('.camera-status-toggle')) {
+//             const badge = e.target.closest('.camera-status-toggle');
+//             const cameraId = parseInt(badge.getAttribute('data-camera-id'));
+//             const currentStatus = badge.getAttribute('data-current-status') === 'true';
+//             
+//             // Confirm action
+//             const action = currentStatus ? 'disable' : 'enable';
+//             if (confirm(`Are you sure you want to ${action} this camera?`)) {
+//                 toggleCameraStatus(cameraId, currentStatus);
+//             }
+//         }
+//     });
+// });
+
+// Camera status badges now remain purely database-based (is_active field only)
+// Stream quality indicators are handled separately by updateStreamQuality function
+
+// Alert acknowledgment
+async function acknowledgeAllAlerts() {
+    if (confirm('Are you sure you want to acknowledge all alerts?')) {
+        try {
+            const response = await fetch('/api/alerts/acknowledge-all/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to acknowledge alerts');
+            }
+            
+            const result = await response.json();
+            console.log(`Successfully acknowledged ${result.count} alerts`);
+            
+            // Refresh the page to show updated alerts
+            location.reload();
+            
+        } catch (error) {
+            console.error('Error acknowledging alerts:', error);
+            alert('Error acknowledging alerts. Please try again.');
+        }
+    }
+}
+
+// Add pulse animation to recording indicators
+function addPulseAnimation() {
+    const style = document.createElement('style');
+    style.textContent = `
+        .pulse {
+            animation: pulse-animation 2s infinite;
+        }
+        
+        @keyframes pulse-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .recording-indicator {
+            animation: recording-blink 1s infinite;
+        }
+        
+        @keyframes recording-blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        .stream-video {
+            transition: all 0.3s ease;
+        }
+        
+        .video-container:hover .stream-video {
+            transform: scale(1.02);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Event handler setup
+function setupEventHandlers() {
+    // Retry button handlers
+    document.querySelectorAll('.retry-stream').forEach(button => {
+        button.addEventListener('click', function() {
+            const cameraId = parseInt(this.dataset.cameraId);
+            retryStream(cameraId);
+        });
+    });
+    
+    // Fullscreen button handlers
+    document.querySelectorAll('.toggle-fullscreen').forEach(button => {
+        button.addEventListener('click', function() {
+            const cameraId = parseInt(this.dataset.cameraId);
+            toggleFullscreen(cameraId);
+        });
+    });
+    
+    // Mute button handlers
+    document.querySelectorAll('.toggle-mute').forEach(button => {
+        button.addEventListener('click', function() {
+            const cameraId = parseInt(this.dataset.cameraId);
+            toggleMute(cameraId);
+        });
+    });
+    
+    // Video click handlers for fullscreen
+    document.querySelectorAll('.stream-video').forEach(video => {
+        video.addEventListener('dblclick', function() {
+            const container = this.closest('.video-container');
+            const cameraId = parseInt(container.dataset.cameraId);
+            toggleFullscreen(cameraId);
+        });
+    });
+}
+
+// Cleanup function
+function cleanupStreams() {
+    streams.forEach((streamData, cameraId) => {
+        stopStream(cameraId);
+    });
+    streams.clear();
+    reconnectAttempts.clear();
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('SOCA Edge Dashboard initializing...');
+    
+    // Add pulse animation
+    addPulseAnimation();
+    
+    // Setup event handlers
+    setupEventHandlers();
+    
+    // Start timestamp updates
+    updateTimestamps();
+    setInterval(updateTimestamps, 1000);
+    
+    // HLS streams are initialized by the camera data builder above
+    
+    // Auto-refresh system status every 60 seconds (reduced frequency for async)
+    setInterval(refreshSystemStatus, 60000);
+    
+    // Initial status refresh after 5 seconds
+    setTimeout(refreshSystemStatus, 5000);
+    
+    // Health check every 45 seconds (offset from system status)
+    setInterval(checkCameraHealth, 45000);
+    
+    console.log('SOCA Edge Dashboard initialized');
+    console.log(`Camera data loaded: ${cameraData.length} active cameras`);
+    console.log('Stream initialization started...');
+});
+
+// Handle visibility change (pause/resume streams when tab is hidden/visible)
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        console.log('Dashboard paused (tab hidden)');
+        // Optionally pause streams to save resources
+    } else {
+        console.log('Dashboard resumed (tab visible)');
+        // Refresh when coming back
+        refreshSystemStatus();
+        updateTimestamps();
+        
+        // Check if any streams need to be restarted
+        cameraData.forEach((camera, index) => {
+            if (camera.active && !streams.has(camera.id)) {
+                console.log(`Restarting stream for camera ${camera.id}`);
+                setTimeout(() => {
+                    initializeCameraStream(camera);
+                }, index * 200); // Stagger restarts
+            }
+        });
+    }
+});
+
+// Cleanup before page unload
+window.addEventListener('beforeunload', function() {
+    console.log('Dashboard shutting down, cleaning up streams...');
+    cleanupStreams();
+});
+
+// Network status handlers
+window.addEventListener('online', function() {
+    console.log('Network connection restored - reinitializing streams');
+    // Restart failed streams
+    cameraData.forEach(camera => {
+        if (camera.active) {
+            const container = document.querySelector(`[data-camera-id="${camera.id}"]`);
+            const errorElement = container?.querySelector('.stream-error');
+            if (errorElement && !errorElement.classList.contains('d-none')) {
+                retryStream(camera.id);
+            }
+        }
+    });
+});
+
+window.addEventListener('offline', function() {
+    console.log('Network connection lost');
+    // Show network error indicators
+    document.querySelectorAll('.stream-quality').forEach(element => {
+        element.className = 'badge bg-danger stream-quality';
+        element.innerHTML = '<i class="bi bi-wifi-off me-1"></i>OFFLINE';
+    });
+});
+</script>
+{% endblock %}

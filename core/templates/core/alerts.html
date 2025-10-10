@@ -1,0 +1,556 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Alerts - SOCA Edge{% endblock %}
+
+{% block page_title %}Security Dashboard{% endblock %}
+{% block page_subtitle %}Monitor alerts and detections{% endblock %}
+
+{% block content %}
+<!-- Debug Info (remove in production) -->
+{% if debug %}
+<div class="alert alert-info mb-3">
+    <strong>Debug Info:</strong> MEDIA_URL = "{{ MEDIA_URL }}" | 
+    Sample detection path: {% if detections_page_obj %}{{ detections_page_obj.0.annotated_snapshot_path }}{% endif %} |
+    Full URL: {{ MEDIA_URL }}{% if detections_page_obj %}{{ detections_page_obj.0.annotated_snapshot_path }}{% endif %}
+</div>
+{% endif %}
+
+<div class="row">
+    <!-- Alert Filters -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <select class="form-select" id="severityFilter">
+                            <option value="">All Severities</option>
+                            <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
+                            <option value="high" {% if selected_severity == 'high' %}selected{% endif %}>High</option>
+                            <option value="medium" {% if selected_severity == 'medium' %}selected{% endif %}>Medium</option>
+                            <option value="low" {% if selected_severity == 'low' %}selected{% endif %}>Low</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="statusFilter">
+                            <option value="">All Status</option>
+                            <option value="acknowledged" {% if selected_status == 'acknowledged' %}selected{% endif %}>Acknowledged</option>
+                            <option value="unacknowledged" {% if selected_status == 'unacknowledged' %}selected{% endif %}>Unacknowledged</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="cameraFilter">
+                            <option value="">All Cameras</option>
+                            {% for camera in cameras %}
+                            <option value="{{ camera.id }}" {% if selected_camera == camera.id|stringformat:"s" %}selected{% endif %}>{{ camera.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control" id="searchFilter" placeholder="Search alerts and detections...">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100" id="refreshAlerts">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Statistics -->
+    <div class="col-12 mb-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card text-white bg-danger">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">Critical</h5>
+                                <h2 class="mb-0">{{ critical_count|default:0 }}</h2>
+                            </div>
+                            <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">High</h5>
+                                <h2 class="mb-0">{{ high_count|default:0 }}</h2>
+                            </div>
+                            <i class="bi bi-exclamation-circle-fill fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-info">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">Medium</h5>
+                                <h2 class="mb-0">{{ medium_count|default:0 }}</h2>
+                            </div>
+                            <i class="bi bi-info-circle-fill fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-secondary">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h5 class="card-title">Low</h5>
+                                <h2 class="mb-0">{{ low_count|default:0 }}</h2>
+                            </div>
+                            <i class="bi bi-info-circle fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="col-12 mb-3">
+        <ul class="nav nav-tabs" id="securityTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="alerts-tab" data-bs-toggle="tab" data-bs-target="#alerts-pane" type="button" role="tab">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Alerts ({{ alert_stats.total }})
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="detections-tab" data-bs-toggle="tab" data-bs-target="#detections-pane" type="button" role="tab">
+                    <i class="bi bi-camera me-2"></i>Detections ({{ detection_stats.total }})
+                </button>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="col-12">
+        <div class="tab-content" id="securityTabsContent">
+            <!-- Alerts Tab -->
+            <div class="tab-pane fade show active" id="alerts-pane" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Security Alerts</h5>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-success" id="acknowledgeSelected">
+                                <i class="bi bi-check"></i> Acknowledge
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th><input type="checkbox" id="selectAllAlerts" class="form-check-input"></th>
+                                        <th>Severity</th>
+                                        <th>Message</th>
+                                        <th>Camera</th>
+                                        <th>Time</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alertsTableBody">
+                                    {% for alert in alerts_page_obj %}
+                                    <tr data-alert-id="{{ alert.id }}" class="alert-row">
+                                        <td><input type="checkbox" class="form-check-input alert-checkbox"></td>
+                                        <td>
+                                            {% if alert.severity == 'critical' %}
+                                                <span class="badge bg-danger">Critical</span>
+                                            {% elif alert.severity == 'high' %}
+                                                <span class="badge bg-warning">High</span>
+                                            {% elif alert.severity == 'medium' %}
+                                                <span class="badge bg-info">Medium</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Low</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ alert.message|truncatechars:80 }}</td>
+                                        <td>{{ alert.camera.name }}</td>
+                                        <td>{{ alert.created_at|date:"M d, Y H:i" }}</td>
+                                        <td>
+                                            {% if alert.is_acknowledged %}
+                                                <span class="badge bg-success">Acknowledged</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Active</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#alertDetailModal" data-alert-id="{{ alert.id }}">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                                {% if not alert.is_acknowledged %}
+                                                <button class="btn btn-outline-success btn-sm acknowledge-btn" data-alert-id="{{ alert.id }}">
+                                                    <i class="bi bi-check"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4 text-muted">
+                                            <i class="bi bi-shield-check fs-1"></i>
+                                            <p class="mt-2">No alerts found</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Alerts Pagination -->
+                        {% if alerts_page_obj.has_other_pages %}
+                        <div class="card-footer">
+                            <nav aria-label="Alerts pagination">
+                                <ul class="pagination pagination-sm justify-content-center mb-0">
+                                    {% if alerts_page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?alerts_page={{ alerts_page_obj.previous_page_number }}{% if selected_severity %}&severity={{ selected_severity }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_camera %}&camera={{ selected_camera }}{% endif %}">Previous</a>
+                                        </li>
+                                    {% endif %}
+                                    
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ alerts_page_obj.number }} of {{ alerts_page_obj.paginator.num_pages }}</span>
+                                    </li>
+                                    
+                                    {% if alerts_page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?alerts_page={{ alerts_page_obj.next_page_number }}{% if selected_severity %}&severity={{ selected_severity }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_camera %}&camera={{ selected_camera }}{% endif %}">Next</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detections Tab -->
+            <div class="tab-pane fade" id="detections-pane" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Detection Events</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Snapshot</th>
+                                        <th>Camera</th>
+                                        <th>Description</th>
+                                        <th>Timestamp</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for detection in detections_page_obj %}
+                                    <tr>
+                                        <td>
+                                            {% if detection.annotated_snapshot_path %}
+                                                <img src="{{ MEDIA_URL }}{{ detection.annotated_snapshot_path }}" class="img-thumbnail" style="width: 60px; height: 45px; object-fit: cover;" alt="Detection Snapshot" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" title="Detection from {{ detection.camera.name }}">
+                                                <div class="bg-light text-center" style="width: 60px; height: 45px; line-height: 45px; display: none;">
+                                                    <i class="bi bi-exclamation-triangle text-warning" title="Image not found: {{ detection.annotated_snapshot_path }}"></i>
+                                                </div>
+                                            {% else %}
+                                                <div class="bg-light text-center" style="width: 60px; height: 45px; line-height: 45px;">
+                                                    <i class="bi bi-camera text-muted" title="No snapshot available"></i>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ detection.camera.name }}</td>
+                                        <td>{{ detection.description|default:"Motion detected"|truncatechars:60 }}</td>
+                                        <td>{{ detection.timestamp|date:"M d, Y H:i:s" }}</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                {% if detection.annotated_snapshot_path %}
+                                                <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#imageModal" data-image-src="{{ MEDIA_URL }}{{ detection.annotated_snapshot_path }}" data-camera="{{ detection.camera.name }}" data-time="{{ detection.timestamp|date:"M d, Y H:i:s" }}">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-muted">
+                                            <i class="bi bi-camera fs-1"></i>
+                                            <p class="mt-2">No detections found</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Detections Pagination -->
+                        {% if detections_page_obj.has_other_pages %}
+                        <div class="card-footer">
+                            <nav aria-label="Detections pagination">
+                                <ul class="pagination pagination-sm justify-content-center mb-0">
+                                    {% if detections_page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?detections_page={{ detections_page_obj.previous_page_number }}{% if selected_camera %}&camera={{ selected_camera }}{% endif %}">Previous</a>
+                                        </li>
+                                    {% endif %}
+                                    
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ detections_page_obj.number }} of {{ detections_page_obj.paginator.num_pages }}</span>
+                                    </li>
+                                    
+                                    {% if detections_page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?detections_page={{ detections_page_obj.next_page_number }}{% if selected_camera %}&camera={{ selected_camera }}{% endif %}">Next</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Detail Modal -->
+<div class="modal fade" id="alertDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Alert Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="alertDetailContent">
+                <!-- Alert details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="modalAcknowledgeBtn">Acknowledge</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal for Detection Snapshots -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalTitle">Detection Snapshot</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" alt="Detection snapshot">
+                <div class="mt-3">
+                    <p class="mb-1"><strong>Camera:</strong> <span id="modalCameraName"></span></p>
+                    <p class="mb-0"><strong>Time:</strong> <span id="modalTimestamp"></span></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-refresh alerts every 30 seconds
+    setInterval(function() {
+        refreshAlerts();
+    }, 30000);
+
+    // Filter functionality with page reload
+    function applyFilters() {
+        const severity = document.getElementById('severityFilter').value;
+        const status = document.getElementById('statusFilter').value;
+        const camera = document.getElementById('cameraFilter').value;
+        
+        const url = new URL(window.location);
+        url.searchParams.delete('alerts_page');
+        url.searchParams.delete('detections_page');
+        
+        if (severity) {
+            url.searchParams.set('severity', severity);
+        } else {
+            url.searchParams.delete('severity');
+        }
+        
+        if (status) {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        
+        if (camera) {
+            url.searchParams.set('camera', camera);
+        } else {
+            url.searchParams.delete('camera');
+        }
+        
+        window.location.href = url.toString();
+    }
+
+    document.getElementById('severityFilter').addEventListener('change', applyFilters);
+    document.getElementById('statusFilter').addEventListener('change', applyFilters);
+    document.getElementById('cameraFilter').addEventListener('change', applyFilters);
+    document.getElementById('refreshAlerts').addEventListener('click', function() {
+        window.location.reload();
+    });
+
+    // Select all functionality
+    const selectAllAlerts = document.getElementById('selectAllAlerts');
+    if (selectAllAlerts) {
+        selectAllAlerts.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.alert-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+        });
+    }
+
+    // Bulk acknowledge action
+    document.getElementById('acknowledgeSelected').addEventListener('click', function() {
+        const selectedAlerts = getSelectedAlerts();
+        if (selectedAlerts.length > 0) {
+            if (confirm(`Acknowledge ${selectedAlerts.length} selected alerts?`)) {
+                bulkAcknowledge(selectedAlerts);
+            }
+        } else {
+            alert('Please select alerts to acknowledge.');
+        }
+    });
+
+    // Individual acknowledge buttons
+    document.querySelectorAll('.acknowledge-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const alertId = this.dataset.alertId;
+            acknowledgeAlert(alertId);
+        });
+    });
+
+    // Image modal for detection snapshots
+    document.querySelectorAll('[data-bs-target="#imageModal"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const imageSrc = this.dataset.imageSrc;
+            const camera = this.dataset.camera;
+            const time = this.dataset.time;
+            
+            document.getElementById('modalImage').src = imageSrc;
+            document.getElementById('modalCameraName').textContent = camera;
+            document.getElementById('modalTimestamp').textContent = time;
+        });
+    });
+
+    // Alert detail modal (placeholder for future implementation)
+    document.querySelectorAll('[data-bs-target="#alertDetailModal"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const alertId = this.dataset.alertId;
+            loadAlertDetails(alertId);
+        });
+    });
+});
+
+function getSelectedAlerts() {
+    const selectedCheckboxes = document.querySelectorAll('.alert-checkbox:checked');
+    return Array.from(selectedCheckboxes).map(checkbox => {
+        return checkbox.closest('tr').dataset.alertId;
+    });
+}
+
+function bulkAcknowledge(alertIds) {
+    // Send bulk acknowledge request
+    const promises = alertIds.map(alertId => acknowledgeAlert(alertId, false));
+    
+    Promise.all(promises).then(() => {
+        window.location.reload();
+    }).catch(error => {
+        console.error('Error acknowledging alerts:', error);
+        alert('Error acknowledging some alerts. Please try again.');
+    });
+}
+
+function acknowledgeAlert(alertId, reload = true) {
+    return fetch(`/alerts/acknowledge/${alertId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success' && reload) {
+            window.location.reload();
+        }
+        return data;
+    })
+    .catch(error => {
+        console.error('Error acknowledging alert:', error);
+        if (reload) {
+            alert('Error acknowledging alert. Please try again.');
+        }
+        throw error;
+    });
+}
+
+function loadAlertDetails(alertId) {
+    // Placeholder for loading alert details
+    document.getElementById('alertDetailContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading alert details...</p>
+        </div>
+    `;
+    
+    // Here you would typically fetch alert details via AJAX
+    // For now, just show a placeholder
+    setTimeout(() => {
+        document.getElementById('alertDetailContent').innerHTML = `
+            <p><strong>Alert ID:</strong> ${alertId}</p>
+            <p><strong>Status:</strong> Active</p>
+            <p><strong>Details:</strong> Alert details would be loaded here via AJAX call.</p>
+        `;
+    }, 500);
+}
+
+function refreshAlerts() {
+    window.location.reload();
+}
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

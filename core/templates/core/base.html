@@ -1,0 +1,283 @@
+{% load static %}
+{% load auth_extras %}
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %} {% endblock %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SOCA Edge{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-light">
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 d-md-block bg-white sidebar collapse border-end" id="sidebarMenu" style="min-height: 100vh;">
+                {% include 'core/sidebar.html' %}
+            </div>
+            
+            <!-- Main Content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-0">
+                <!-- Enhanced Top Header -->
+                <header class="bg-white border-bottom shadow-sm">
+                    <div class="container-fluid px-4">
+                        <div class="d-flex justify-content-between align-items-center py-3">
+                            <!-- Left Side: Mobile Toggle + Page Title -->
+                            <div class="d-flex align-items-center">
+                                <button class="btn btn-outline-secondary d-md-none me-3" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu">
+                                    <i class="bi bi-list"></i>
+                                </button>
+                                
+                                <div>
+                                    <h1 class="h4 mb-0 text-dark">{% block page_title %}Dashboard{% endblock %}</h1>
+                                    <small class="text-muted">{% block page_subtitle %}SOCA Edge Surveillance System{% endblock %}</small>
+                                </div>
+                            </div>
+                            
+                            <!-- Right Side: User Profile -->
+                            <div class="d-flex align-items-center gap-3">
+                                <!-- System Status -->
+                                <div class="d-none d-lg-flex align-items-center">
+                                    <span class="badge bg-success me-2">
+                                        <i class="bi bi-circle-fill me-1"></i>
+                                        System Online
+                                    </span>
+                                </div>
+                                
+                                <!-- User Profile -->
+                                <div class="dropdown">
+                                    <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="bi bi-person-circle me-1"></i>
+                                        {{ user.username|default:"Admin" }}
+                                        {% user_role_badge user %}
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" onclick="showUserInfo()">
+                                            <i class="bi bi-person me-2"></i>Profile
+                                        </a></li>
+                                        {% if user.is_staff %}
+                                            <li><a class="dropdown-item" href="/admin/" target="_blank">
+                                                <i class="bi bi-gear me-2"></i>Admin Panel
+                                            </a></li>
+                                        {% endif %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item text-danger" href="#" onclick="confirmLogout()">
+                                            <i class="bi bi-box-arrow-right me-2"></i>Logout
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+                
+                <!-- Content Area -->
+                <div class="container-fluid px-4 py-4">
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Hidden Logout Form -->
+    <form id="logoutForm" method="post" action="{% url 'logout' %}" style="display: none;">
+        {% csrf_token %}
+    </form>
+    
+    <!-- User Profile Modal -->
+    <div class="modal fade" id="userProfileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-person-circle me-2"></i>User Profile
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-4 text-center">
+                            <i class="bi bi-person-circle text-primary" style="font-size: 4rem;"></i>
+                        </div>
+                        <div class="col-md-8">
+                            <h6 class="fw-bold mb-3">Account Information</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Username:</strong></td>
+                                    <td>{{ user.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Full Name:</strong></td>
+                                    <td>{{ user.get_full_name|default:"Not set" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Email:</strong></td>
+                                    <td>{{ user.email|default:"Not set" }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Role:</strong></td>
+                                    <td>
+                                        {% if user|is_admin %}
+                                            <span class="badge bg-danger">Admin</span>
+                                        {% elif user|is_user %}
+                                            <span class="badge bg-info">User</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">No Group</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Permissions:</strong></td>
+                                    <td>
+                                        {% if user|can_add_camera %}
+                                            <span class="badge bg-success me-1">Add</span>
+                                        {% endif %}
+                                        {% if user|can_change_camera %}
+                                            <span class="badge bg-warning me-1">Edit</span>
+                                        {% endif %}
+                                        {% if user|can_delete_camera %}
+                                            <span class="badge bg-danger me-1">Delete</span>
+                                        {% endif %}
+                                        {% if user|can_view_camera %}
+                                            <span class="badge bg-primary me-1">View</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Last Login:</strong></td>
+                                    <td>{{ user.last_login|date:"M d, Y H:i" }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logout Confirmation Modal -->
+    <div class="modal fade" id="logoutModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle me-2"></i>Confirm Logout
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">Are you sure you want to logout from the surveillance system?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="performLogout()">
+                        <i class="bi bi-box-arrow-right me-1"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Show user profile modal
+        function showUserInfo() {
+            const userModal = new bootstrap.Modal(document.getElementById('userProfileModal'));
+            userModal.show();
+        }
+        
+        // Show logout confirmation modal
+        function confirmLogout() {
+            const logoutModal = new bootstrap.Modal(document.getElementById('logoutModal'));
+            logoutModal.show();
+        }
+        
+        // Perform actual logout
+        function performLogout() {
+            // Hide the modal first
+            const logoutModal = bootstrap.Modal.getInstance(document.getElementById('logoutModal'));
+            if (logoutModal) {
+                logoutModal.hide();
+            }
+            
+            // Show loading state
+            document.body.style.cursor = 'wait';
+            
+            // Add a small delay to ensure modal is hidden
+            setTimeout(() => {
+                // Submit the logout form
+                document.getElementById('logoutForm').submit();
+            }, 300);
+        }
+        
+        // Auto-hide alerts after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    if (alert && !alert.classList.contains('d-none')) {
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }
+                }, 5000);
+            });
+        });
+        
+        // Add session timeout warning (optional)
+        let sessionTimeoutWarning = null;
+        let sessionTimeout = null;
+        
+        function startSessionMonitoring() {
+            // Clear existing timeouts
+            if (sessionTimeoutWarning) clearTimeout(sessionTimeoutWarning);
+            if (sessionTimeout) clearTimeout(sessionTimeout);
+            
+            // Warning 2 minutes before timeout (3 days)
+            sessionTimeoutWarning = setTimeout(() => {
+                if (confirm('Your session will expire in 2 minutes. Click OK to stay logged in.')) {
+                    // Make a lightweight request to extend session
+                    fetch('{% url "api_system_status" %}', {
+                        method: 'GET',
+                        credentials: 'include'
+                    }).then(() => {
+                        // Restart session monitoring
+                        startSessionMonitoring();
+                    });
+                }
+            }, (3 * 24 * 60 * 60 * 1000) - (2 * 60 * 1000)); // 3 days minus 2 minutes
+            
+            // Automatic logout after 3 days
+            sessionTimeout = setTimeout(() => {
+                alert('Your session has expired. You will be redirected to the login page.');
+                performLogout();
+            }, 3 * 24 * 60 * 60 * 1000); // 3 days
+        }
+        
+        // Start session monitoring when page loads
+        document.addEventListener('DOMContentLoaded', startSessionMonitoring);
+        
+        // Reset session monitoring on user activity
+        ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+            document.addEventListener(event, () => {
+                startSessionMonitoring();
+            }, { passive: true, throttle: 30000 }); // Throttle to every 30 seconds
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>2

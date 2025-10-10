@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+
+
+# Pipenv / virtualenv / poetry
+env/
+.venv/
+venv/
+ENV/
+env.bak/
+
+#unused file
+*.sh
+*.md
+*./media/*
+
+video_processor/
+
+#MediaMTX/
+media/
+models/

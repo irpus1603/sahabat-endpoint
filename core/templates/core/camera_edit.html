@@ -1,0 +1,1661 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Edit Camera - SOCA Edge{% endblock %}
+
+{% block page_title %}Edit Camera{% endblock %}
+{% block page_subtitle %}Configure {{ camera.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Camera Configuration</h5>
+            </div>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Camera Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" value="{{ camera.name }}" required id="cameraName">
+                            <div class="form-text">Camera name must not contain spaces</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="is_active">
+                                <option value="True" {% if camera.is_active %}selected{% endif %}>Active</option>
+                                <option value="False" {% if not camera.is_active %}selected{% endif %}>Inactive</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Location Information Section -->
+                        <div class="col-12">
+                            <hr class="my-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-geo-alt me-2"></i>Location Information
+                            </h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Site Name</label>
+                            <input type="text" class="form-control" name="site_name" value="{{ camera.site_name|default:'' }}" placeholder="e.g., Main Office, Warehouse A">
+                            <div class="form-text">Enter the site or building name</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Floor</label>
+                            <input type="text" class="form-control" name="floor" value="{{ camera.floor|default:'' }}" placeholder="e.g., Ground Floor, 2nd Floor, Basement">
+                            <div class="form-text">Specify the floor level</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Location Description</label>
+                            <input type="text" class="form-control" name="location" value="{{ camera.location|default:'' }}" placeholder="e.g., Main Entrance, Production Area, Parking Lot">
+                            <div class="form-text">Detailed location description within the site</div>
+                        </div>
+                        
+                        <!-- Camera Configuration Section -->
+                        <div class="col-12">
+                            <hr class="my-4">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-camera me-2"></i>Camera Configuration
+                            </h6>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Camera Source <span class="text-danger">*</span></label>
+                            <select class="form-select" name="camera_source" id="cameraSourceSelectEdit" onchange="updateUrlFieldEdit()">
+                                <option value="rtsp" {% if camera.camera_source == 'rtsp' %}selected{% endif %}>RTSP Stream</option>
+                                <option value="local" {% if camera.camera_source == 'local' %}selected{% endif %}>Local Camera</option>
+                                <option value="http" {% if camera.camera_source == 'http' %}selected{% endif %}>HTTP Stream</option>
+                                <option value="video_file" {% if camera.camera_source == 'video_file' %}selected{% endif %}>Video File</option>
+                                <option value="youtube" {% if camera.camera_source == 'youtube' %}selected{% endif %}>YouTube URL</option>
+                            </select>
+                            <div class="form-text">Select the type of camera source</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" id="urlLabelEdit">RTSP URL <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="rtsp_url" value="{{ camera.rtsp_url }}" required id="urlInputEdit">
+                            <div class="form-text" id="urlHelpTextEdit">Current RTSP stream URL for this camera</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="username" value="{{ camera.username }}" placeholder="Camera username (optional)">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" placeholder="Leave blank to keep current password">
+                            <div class="form-text">Leave blank to keep existing password</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">AI Module</label>
+                            <select class="form-select" name="aimodule">
+                                <option value="">No AI Module</option>
+                                {% for module in aimodules %}
+                                    <option value="{{ module.id }}" {% if camera.aimodule and camera.aimodule.id == module.id %}selected{% endif %}>
+                                        {{ module.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Select an AI module for this camera</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">AI Module Status</label>
+                            <select class="form-select" name="is_aimodule_active">
+                                <option value="false" {% if not camera.is_aimodule_active %}selected{% endif %}>Inactive</option>
+                                <option value="true" {% if camera.is_aimodule_active %}selected{% endif %}>Active</option>
+                            </select>
+                            <div class="form-text">Enable or disable AI module for this camera</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <a href="{% url 'dashboard' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Dashboard
+                    </a>
+                    <div>
+                        <button type="button" class="btn btn-info me-2" id="testConnectionBtn">
+                            <i class="bi bi-wifi me-1"></i>Test Connection
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="updateCameraBtn">
+                            <i class="bi bi-check-circle me-1"></i>Update Camera
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Camera Information -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">Camera Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Camera ID:</strong></td>
+                                <td>{{ camera.id }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Status:</strong></td>
+                                <td>
+                                    {% if camera.is_active %}
+                                        <span class="badge" style="background-color: #d4edda; color: #155724;">Active</span>
+                                    {% else %}
+                                        <span class="badge" style="background-color: #f8d7da; color: #721c24;">Inactive</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Created:</strong></td>
+                                <td>{{ camera.created_at|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Authentication:</strong></td>
+                                <td>
+                                    {% if camera.username %}
+                                        <span class="badge" style="background-color: #cce7ff; color: #004085;">Protected</span>
+                                    {% else %}
+                                        <span class="badge" style="background-color: #e2e3e5; color: #495057;">Open</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>AI Module:</strong></td>
+                                <td>
+                                    {% if camera.aimodule %}
+                                        <span class="badge" style="background-color: #e7f3ff; color: #0056b3;">{{ camera.aimodule.name }}</span>
+                                        {% if camera.is_aimodule_active %}
+                                            <span class="badge ms-1" style="background-color: #d4edda; color: #155724;">Active</span>
+                                        {% else %}
+                                            <span class="badge ms-1" style="background-color: #f8d7da; color: #721c24;">Inactive</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge" style="background-color: #f8f9fa; color: #6c757d;">None</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Site Name:</strong></td>
+                                <td>{{ camera.site_name|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Floor:</strong></td>
+                                <td>{{ camera.floor|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Location:</strong></td>
+                                <td>{{ camera.location|default:"Not specified" }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>ROI Configuration:</strong></td>
+                                <td>
+                                    {% if camera.roi_coordinates %}
+                                        <span class="badge" style="background-color: #e7f3ff; color: #0056b3;">Configured</span>
+                                    {% else %}
+                                        <span class="badge" style="background-color: #f8f9fa; color: #6c757d;">Full Frame</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Actions:</strong></td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#roiModal">
+                                        <i class="bi bi-crop me-1"></i>Configure ROI
+                                    </button>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Connection Test Results -->
+        <div class="card mt-3" id="testResultsCard" style="display: none;">
+            <div class="card-header">
+                <h6 class="mb-0">Connection Test Results</h6>
+            </div>
+            <div class="card-body" id="testResults">
+                <!-- Test results will appear here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ROI Configuration Modal -->
+<div class="modal fade" id="roiModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configure Region of Interest (ROI)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Define regions of interest on the camera feed. Choose your shape type and draw the ROI area.
+                    <br><small class="text-muted">
+                        <strong>Polygon:</strong> Click to add points, double-click to complete.
+                        <strong>Rectangle:</strong> Click and drag to draw.
+                        <strong>Line:</strong> Click start and end points.
+                        <strong>Circle:</strong> Click center and drag to set radius.
+                    </small>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-10">
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="drawMode" id="polygonMode" value="polygon" checked>
+                            <label class="btn btn-outline-primary" for="polygonMode">
+                                <i class="bi bi-pentagon me-1"></i>Polygon
+                            </label>
+                            <input type="radio" class="btn-check" name="drawMode" id="rectangleMode" value="rectangle">
+                            <label class="btn btn-outline-primary" for="rectangleMode">
+                                <i class="bi bi-square me-1"></i>Rectangle
+                            </label>
+                            <input type="radio" class="btn-check" name="drawMode" id="lineMode" value="line">
+                            <label class="btn btn-outline-primary" for="lineMode">
+                                <i class="bi bi-slash-lg me-1"></i>Line
+                            </label>
+                            <input type="radio" class="btn-check" name="drawMode" id="circleMode" value="circle">
+                            <label class="btn btn-outline-primary" for="circleMode">
+                                <i class="bi bi-circle me-1"></i>Circle
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <span class="badge bg-info" id="roiCounter">ROI Count: 0</span>
+                    </div>
+                </div>
+                <div class="text-center position-relative">
+                    <canvas id="roiCanvas" width="800" height="600" class="border" style="cursor: crosshair;"></canvas>
+                    <div id="thumbnailPreview" class="position-absolute top-0 start-0 w-100 h-100 d-none" style="pointer-events: none;">
+                        <img id="thumbnailImage" class="w-100 h-100" style="object-fit: contain;">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-warning btn-sm" id="clearRoiBtn">
+                        <i class="bi bi-trash me-1"></i>Clear All
+                    </button>
+                    <button class="btn btn-info btn-sm" id="resetRoiBtn">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Reset
+                    </button>
+                    <button class="btn btn-secondary btn-sm" id="loadCurrentRoiBtn">
+                        <i class="bi bi-download me-1"></i>Load Current ROI
+                    </button>
+                    <button class="btn btn-success btn-sm" id="loadThumbnailBtn">
+                        <i class="bi bi-image me-1"></i>Load Thumbnail
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" id="captureThumbnailBtn">
+                        <i class="bi bi-camera me-1"></i>Capture Thumbnail
+                    </button>
+                    <label class="btn btn-outline-secondary btn-sm" for="thumbnailInput">
+                        <i class="bi bi-upload me-1"></i>Upload Image
+                    </label>
+                    <input type="file" class="d-none" id="thumbnailInput" accept="image/*">
+                    <button class="btn btn-outline-danger btn-sm" id="undoLastRoiBtn">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Undo Last
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveRoiBtn">Save ROI</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- HLS.js for video capture -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+// Global variables for ROI functionality
+let roiCanvas, roiCtx;
+let roiData = [];
+let currentPolygon = [];
+let isDrawing = false;
+let drawMode = 'polygon';
+let thumbnailImage = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('testConnectionBtn').addEventListener('click', function() {
+        testConnection();
+    });
+    
+    // Add validation event listeners
+    setupValidation();
+    
+    // Initialize URL field based on current camera source
+    updateUrlFieldEdit();
+    
+    // Thumbnail capture functionality
+    document.getElementById('captureThumbnailBtn').addEventListener('click', captureThumbnail);
+    
+    // Thumbnail upload functionality
+    document.getElementById('thumbnailInput').addEventListener('change', handleThumbnailUpload);
+    
+    // ROI configuration
+    document.getElementById('clearRoiBtn').addEventListener('click', clearROI);
+    document.getElementById('resetRoiBtn').addEventListener('click', resetROI);
+    document.getElementById('loadCurrentRoiBtn').addEventListener('click', loadCurrentROI);
+    document.getElementById('loadThumbnailBtn').addEventListener('click', loadThumbnail);
+    document.getElementById('undoLastRoiBtn').addEventListener('click', undoLastROI);
+    document.getElementById('saveRoiBtn').addEventListener('click', saveROI);
+    
+    // Draw mode change
+    document.querySelectorAll('input[name="drawMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            drawMode = this.value;
+            updateCanvasCursor();
+        });
+    });
+    
+    // Initialize ROI canvas when modal is shown
+    document.getElementById('roiModal').addEventListener('shown.bs.modal', function() {
+        initializeROICanvas();
+    });
+});
+
+function setupValidation() {
+    // Real-time validation for URL field (now supports all source types)
+    const urlInput = document.getElementById('urlInputEdit');
+    if (urlInput) {
+        urlInput.addEventListener('blur', validateSourceUrl);
+        urlInput.addEventListener('input', function(e) {
+            clearFieldError(e);
+            updateSubmitButtonState();
+        });
+    }
+    
+    // Real-time validation for camera name
+    const nameInput = document.getElementById('cameraName');
+    if (nameInput) {
+        nameInput.addEventListener('blur', validateCameraName);
+        nameInput.addEventListener('input', function(e) {
+            clearFieldError(e);
+            updateSubmitButtonState();
+        });
+    }
+    
+    // Initialize button state
+    updateSubmitButtonState();
+}
+
+function validateRTSPUrl(e) {
+    const field = e.target;
+    const form = field.closest('form');
+    const sourceField = form.querySelector('select[name="camera_source"]');
+    const selectedSource = sourceField ? sourceField.value : 'rtsp';
+    
+    if (field.value && !isValidSourceUrl(field.value, selectedSource)) {
+        const errorMessage = getSourceValidationMessage(selectedSource);
+        showFieldError(field, errorMessage);
+    }
+}
+
+function validateSourceUrl(e) {
+    const field = e.target;
+    const form = field.closest('form');
+    const sourceField = form.querySelector('select[name="camera_source"]');
+    const selectedSource = sourceField ? sourceField.value : 'rtsp';
+    
+    if (field.value && !isValidSourceUrl(field.value, selectedSource)) {
+        const errorMessage = getSourceValidationMessage(selectedSource);
+        showFieldError(field, errorMessage);
+    }
+}
+
+function validateCameraName(e) {
+    const field = e.target;
+    if (field.value && (field.value.trim().length < 3 || field.value.includes(' '))) {
+        showFieldError(field, 'Camera name must be at least 3 characters, and without spaces');
+    }
+}
+
+function isValidRTSPUrl(url) {
+    return isValidSourceUrl(url, 'rtsp');
+}
+
+function isValidSourceUrl(value, sourceType) {
+    switch(sourceType) {
+        case 'local':
+            // Should be a number (device index)
+            return /^\d+$/.test(value.trim());
+        case 'rtsp':
+            try {
+                const urlObj = new URL(value);
+                return urlObj.protocol === 'rtsp:' && urlObj.hostname;
+            } catch {
+                return false;
+            }
+        case 'http':
+            try {
+                const urlObj = new URL(value);
+                return (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') && urlObj.hostname;
+            } catch {
+                return false;
+            }
+        case 'video_file':
+            // Should be a valid file path
+            return value.trim().length > 0 && (
+                value.includes('/') || // Unix path
+                /^[A-Za-z]:\\/.test(value) || // Windows path
+                value.includes('\\') // Windows path
+            );
+        case 'youtube':
+            // Should be a valid YouTube URL
+            return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(value);
+        default:
+            return true; // Allow any value for unknown types
+    }
+}
+
+function getSourceValidationMessage(sourceType) {
+    switch(sourceType) {
+        case 'local':
+            return 'Please enter a valid camera device index (e.g., 0, 1, 2)';
+        case 'rtsp':
+            return 'Please enter a valid RTSP URL (rtsp://...)';
+        case 'http':
+            return 'Please enter a valid HTTP URL (http:// or https://...)';
+        case 'video_file':
+            return 'Please enter a valid file path (e.g., /path/to/video.mp4)';
+        case 'youtube':
+            return 'Please enter a valid YouTube URL (https://www.youtube.com/...)';
+        default:
+            return 'Please enter a valid value';
+    }
+}
+
+function showFieldError(field, message) {
+    field.classList.add('is-invalid');
+    
+    // Remove existing error message
+    const existingError = field.parentNode.querySelector('.invalid-feedback');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Add new error message
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'invalid-feedback';
+    errorDiv.textContent = message;
+    field.parentNode.appendChild(errorDiv);
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+
+function clearFieldError(e) {
+    const field = e.target;
+    field.classList.remove('is-invalid');
+    const errorDiv = field.parentNode.querySelector('.invalid-feedback');
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+
+function updateSubmitButtonState() {
+    const form = document.querySelector('form');
+    const submitBtn = document.getElementById('updateCameraBtn');
+    
+    if (!submitBtn || !form) return;
+    
+    // Check if there are any validation errors
+    const hasErrors = form.querySelectorAll('.is-invalid').length > 0;
+    
+    // Check if required fields are empty - use the correct field IDs
+    const nameField = document.getElementById('cameraName');
+    const urlField = document.getElementById('urlInputEdit');
+    const hasEmptyRequired = !nameField?.value?.trim() || !urlField?.value?.trim();
+    
+    // Disable submit button if there are errors or empty required fields
+    submitBtn.disabled = hasErrors || hasEmptyRequired;
+}
+
+function testConnection() {
+    const btn = document.getElementById('testConnectionBtn');
+    const resultCard = document.getElementById('testResultsCard');
+    const results = document.getElementById('testResults');
+    
+    // Get form data
+    const urlInput = document.getElementById('urlInputEdit');
+    const sourceSelect = document.getElementById('cameraSourceSelectEdit');
+    const rtspUrl = urlInput ? urlInput.value : document.querySelector('input[name="rtsp_url"]').value;
+    const selectedSource = sourceSelect ? sourceSelect.value : 'rtsp';
+    const username = document.querySelector('input[name="username"]').value;
+    const password = document.querySelector('input[name="password"]').value;
+    
+    if (!rtspUrl) {
+        const sourceLabel = selectedSource === 'local' ? 'camera device index' : 
+                           selectedSource === 'video_file' ? 'video file path' :
+                           selectedSource === 'youtube' ? 'YouTube URL' : 'stream URL';
+        alert(`Please enter a ${sourceLabel} first.`);
+        return;
+    }
+    
+    // Show loading state
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing Connection...';
+    btn.disabled = true;
+    
+    // Show results card
+    resultCard.style.display = 'block';
+    results.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+            <span>Testing connection to ${rtspUrl}...</span>
+        </div>
+    `;
+    
+    // Use real Django API endpoint for testing camera connection
+    fetch(`/api/camera/{{ camera.id }}/test-connection/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            rtsp_url: rtspUrl,
+            username: username,
+            password: password
+        })
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.status === 'pending' && data.check_url) {
+            // Poll for results
+            pollTestResults(data.check_url, btn, originalText, results);
+        } else if (data.success) {
+            results.innerHTML = `
+                <div class="alert alert-success mb-0">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-check-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="mb-1">Connection Successful!</h6>
+                            <p class="mb-0">${data.message}</p>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <strong>Resolution</strong><br>
+                            <span class="text-muted">${data.resolution || '1920x1080'}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Frame Rate</strong><br>
+                            <span class="text-muted">${data.fps || '25'} FPS</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Codec</strong><br>
+                            <span class="text-muted">${data.codec || 'H.264'}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Camera ID</strong><br>
+                            <span class="text-muted">${data.camera_id}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Connection OK';
+            btn.className = 'btn btn-success me-2';
+        } else {
+            results.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="mb-1">Connection Failed</h6>
+                            <p class="mb-0">${data.message || 'Unable to connect to the camera stream with the current configuration.'}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Connection Failed';
+            btn.className = 'btn btn-danger me-2';
+        }
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+            btn.className = 'btn btn-info me-2';
+            btn.disabled = false;
+        }, 3000);
+    })
+    .catch(error => {
+        console.error('Connection test error:', error);
+        
+        results.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                    <div>
+                        <h6 class="mb-1">Connection Test Failed</h6>
+                        <p class="mb-0">Network error or server unavailable.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Test Failed';
+        btn.className = 'btn btn-danger me-2';
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+            btn.className = 'btn btn-info me-2';
+            btn.disabled = false;
+        }, 3000);
+    });
+}
+
+function pollTestResults(checkUrl, btn, originalText, results) {
+    const pollInterval = setInterval(() => {
+        fetch(checkUrl, {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Poll result:', data);
+            
+            if (data.status === 'completed' || data.success !== undefined) {
+                clearInterval(pollInterval);
+                
+                if (data.success) {
+                    results.innerHTML = `
+                        <div class="alert alert-success mb-0">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-check-circle-fill fs-4 me-3"></i>
+                                <div>
+                                    <h6 class="mb-1">Connection Successful!</h6>
+                                    <p class="mb-0">${data.message}</p>
+                                </div>
+                            </div>
+                            <hr>
+                            <div class="row text-center">
+                                <div class="col-md-3">
+                                    <strong>Resolution</strong><br>
+                                    <span class="text-muted">${data.resolution || '1920x1080'}</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Frame Rate</strong><br>
+                                    <span class="text-muted">${data.fps || '25'} FPS</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Codec</strong><br>
+                                    <span class="text-muted">${data.codec || 'H.264'}</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Camera ID</strong><br>
+                                    <span class="text-muted">${data.camera_id}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Connection OK';
+                    btn.className = 'btn btn-success me-2';
+                } else {
+                    results.innerHTML = `
+                        <div class="alert alert-danger mb-0">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                                <div>
+                                    <h6 class="mb-1">Connection Failed</h6>
+                                    <p class="mb-0">${data.message || 'Unable to connect to the camera stream.'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Connection Failed';
+                    btn.className = 'btn btn-danger me-2';
+                }
+                
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+                    btn.className = 'btn btn-info me-2';
+                    btn.disabled = false;
+                }, 3000);
+                
+            } else if (data.status === 'failed') {
+                clearInterval(pollInterval);
+                
+                results.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                            <div>
+                                <h6 class="mb-1">Connection Test Failed</h6>
+                                <p class="mb-0">${data.message || 'Connection test failed.'}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Test Failed';
+                btn.className = 'btn btn-danger me-2';
+                
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+                    btn.className = 'btn btn-info me-2';
+                    btn.disabled = false;
+                }, 3000);
+            }
+            // If status is still 'pending', continue polling
+        })
+        .catch(error => {
+            console.error('Polling error:', error);
+            clearInterval(pollInterval);
+            
+            results.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-x-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="mb-1">Connection Test Error</h6>
+                            <p class="mb-0">Network error while checking results.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            btn.innerHTML = '<i class="bi bi-x-circle me-1"></i>Test Error';
+            btn.className = 'btn btn-danger me-2';
+            
+            setTimeout(() => {
+                btn.innerHTML = '<i class="bi bi-wifi me-1"></i>Test Connection';
+                btn.className = 'btn btn-info me-2';
+                btn.disabled = false;
+            }, 3000);
+        });
+    }, 1000); // Poll every 1 second
+}
+
+// Utility function to get CSRF cookie
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Thumbnail capture function
+function captureThumbnail() {
+    const btn = document.getElementById('captureThumbnailBtn');
+    const originalText = btn.innerHTML;
+    
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Capturing...';
+    btn.disabled = true;
+    
+    const cameraRtspUrl = "{{ camera.rtsp_url }}";
+    
+    // Handle different camera source types
+    const cameraSource = '{{ camera.camera_source }}';
+    
+    // Route to appropriate capture method based on camera source
+   
+    if (cameraSource === 'local' || cameraSource === 'video_file' || cameraSource === 'youtube' || cameraSource === 'rtsp') {
+        // Local cameras or video files - use local capture method
+        captureFromLocalCamera(btn, originalText);
+        return;
+    }
+    else { 
+        resetCaptureButton(btn, originalText, 'Unsupported camera type');
+        return;
+    }
+    
+    // Use RTSP-based frame capture API for network cameras
+    // Call the server-side API to capture frame directly from RTSP
+    fetch(`/core/api/camera/{{ camera.id }}/capture-frame/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.frame_data) {
+            // Convert base64 frame data to blob and process
+            const base64Data = data.frame_data;
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/jpeg' });
+            
+            // Process the captured frame (download directly)
+            const imageUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            link.download = `camera_{{ camera.id }}_thumbnail_${Date.now()}.jpg`;
+            link.click();
+            
+            // Reset button state
+            resetCaptureButton(btn, originalText, 'Captured!');
+            setTimeout(() => {
+                resetCaptureButton(btn, originalText);
+            }, 2000);
+            
+            // Clean up
+            URL.revokeObjectURL(imageUrl);
+        } else {
+            console.error('RTSP capture failed:', data.error);
+            resetCaptureButton(btn, originalText, data.error || 'Capture failed');
+        }
+    })
+    .catch(error => {
+        console.error('RTSP capture error:', error);
+        resetCaptureButton(btn, originalText, 'Network error');
+    });
+}
+
+function captureFrame(video, btn, originalText) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert to blob and create file input
+    canvas.toBlob(function(blob) {
+        const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        document.getElementById('thumbnailInput').files = dt.files;
+        
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const existingPreview = document.querySelector('.thumbnail-preview');
+            if (existingPreview) existingPreview.remove();
+            
+            const preview = document.createElement('div');
+            preview.className = 'thumbnail-preview mt-2';
+            preview.innerHTML = `
+                <small class="text-muted">Captured thumbnail:</small>
+                <div class="mt-1">
+                    <img src="${e.target.result}" alt="Captured thumbnail" class="img-thumbnail" style="max-width: 200px; max-height: 150px;">
+                </div>
+            `;
+            document.getElementById('thumbnailInput').parentNode.appendChild(preview);
+            
+            // Also load into ROI canvas if modal is open
+            if (document.getElementById('roiModal').classList.contains('show')) {
+                const img = new Image();
+                img.onload = function() {
+                    thumbnailImage = img;
+                    resizeCanvasToImage();
+                    clearCanvas();
+                    redrawROI();
+                };
+                img.src = e.target.result;
+            }
+        };
+        reader.readAsDataURL(file);
+        
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Captured!';
+        btn.className = 'btn btn-success';
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.className = 'btn btn-outline-primary';
+            btn.disabled = false;
+        }, 2000);
+    }, 'image/jpeg', 0.8);
+}
+
+function captureFromLocalCamera(btn, originalText) {
+    // Use the new API endpoint for local camera capture
+    fetch(`/api/camera/{{ camera.id }}/capture-frame/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Convert base64 to blob and create file
+            const base64Data = data.frame_data;
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: 'image/jpeg' });
+            const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            
+            // Set file to input
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            document.getElementById('thumbnailInput').files = dt.files;
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const existingPreview = document.querySelector('.thumbnail-preview');
+                if (existingPreview) existingPreview.remove();
+                
+                const preview = document.createElement('div');
+                preview.className = 'thumbnail-preview mt-2';
+                preview.innerHTML = `
+                    <small class="text-muted">Captured thumbnail from local camera:</small>
+                    <div class="mt-1">
+                        <img src="${e.target.result}" alt="Captured thumbnail" class="img-thumbnail" style="max-width: 200px; max-height: 150px;">
+                    </div>
+                `;
+                document.getElementById('thumbnailInput').parentNode.appendChild(preview);
+                
+                // Also load into ROI canvas if modal is open
+                if (document.getElementById('roiModal').classList.contains('show')) {
+                    const img = new Image();
+                    img.onload = function() {
+                        thumbnailImage = img;
+                        resizeCanvasToImage();
+                        clearCanvas();
+                        redrawROI();
+                    };
+                    img.src = e.target.result;
+                }
+            };
+            reader.readAsDataURL(file);
+            
+            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Captured!';
+            btn.className = 'btn btn-success';
+            
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.className = 'btn btn-outline-primary';
+                btn.disabled = false;
+            }, 2000);
+            
+        } else {
+            resetCaptureButton(btn, originalText, data.error || 'Capture failed');
+        }
+    })
+    .catch(error => {
+        console.error('Local camera capture error:', error);
+        resetCaptureButton(btn, originalText, 'Network error');
+    });
+}
+
+function resetCaptureButton(btn, originalText, errorMsg) {
+    btn.innerHTML = `<i class="bi bi-x-circle me-1"></i>${errorMsg}`;
+    btn.className = 'btn btn-danger';
+    
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.className = 'btn btn-outline-primary';
+        btn.disabled = false;
+    }, 3000);
+}
+
+// Handle thumbnail upload
+function handleThumbnailUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        return;
+    }
+    
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const existingPreview = document.querySelector('.thumbnail-preview');
+        if (existingPreview) existingPreview.remove();
+        
+        const preview = document.createElement('div');
+        preview.className = 'thumbnail-preview mt-2';
+        preview.innerHTML = `
+            <small class="text-muted">Uploaded thumbnail:</small>
+            <div class="mt-1">
+                <img src="${e.target.result}" alt="Uploaded thumbnail" class="img-thumbnail" style="max-width: 200px; max-height: 150px;">
+            </div>
+        `;
+        document.getElementById('thumbnailInput').parentNode.appendChild(preview);
+        
+        // Also load into ROI canvas if modal is open
+        if (document.getElementById('roiModal').classList.contains('show')) {
+            const img = new Image();
+            img.onload = function() {
+                thumbnailImage = img;
+                resizeCanvasToImage();
+                clearCanvas();
+                redrawROI();
+            };
+            img.src = e.target.result;
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+// ROI Canvas functions
+function initializeROICanvas() {
+    roiCanvas = document.getElementById('roiCanvas');
+    roiCtx = roiCanvas.getContext('2d');
+    
+    // Initialize event listeners
+    roiCanvas.addEventListener('click', handleCanvasClick);
+    roiCanvas.addEventListener('dblclick', handleCanvasDoubleClick);
+    roiCanvas.addEventListener('mousemove', handleCanvasMouseMove);
+    
+    // Clear and setup canvas
+    clearCanvas();
+    updateROICounter();
+    
+    // Load thumbnail if available
+    loadThumbnail();
+    
+    // Load current ROI if exists
+    loadCurrentROI();
+}
+
+function resizeCanvasToImage() {
+    if (!thumbnailImage || !roiCanvas) return;
+    
+    // Set canvas dimensions to match image dimensions
+    roiCanvas.width = thumbnailImage.width;
+    roiCanvas.height = thumbnailImage.height;
+    
+    // Update canvas display size to fit container while maintaining aspect ratio
+    const maxWidth = 800;
+    const maxHeight = 600;
+    const aspectRatio = thumbnailImage.width / thumbnailImage.height;
+    
+    let displayWidth = thumbnailImage.width;
+    let displayHeight = thumbnailImage.height;
+    
+    if (displayWidth > maxWidth) {
+        displayWidth = maxWidth;
+        displayHeight = displayWidth / aspectRatio;
+    }
+    
+    if (displayHeight > maxHeight) {
+        displayHeight = maxHeight;
+        displayWidth = displayHeight * aspectRatio;
+    }
+    
+    roiCanvas.style.width = displayWidth + 'px';
+    roiCanvas.style.height = displayHeight + 'px';
+}
+
+function clearCanvas() {
+    roiCtx.clearRect(0, 0, roiCanvas.width, roiCanvas.height);
+    
+    if (thumbnailImage) {
+        // Draw thumbnail as background
+        roiCtx.drawImage(thumbnailImage, 0, 0, roiCanvas.width, roiCanvas.height);
+    } else {
+        // Draw placeholder
+        roiCtx.fillStyle = '#f8f9fa';
+        roiCtx.fillRect(0, 0, roiCanvas.width, roiCanvas.height);
+        
+        roiCtx.strokeStyle = '#dee2e6';
+        roiCtx.lineWidth = 2;
+        roiCtx.setLineDash([10, 5]);
+        roiCtx.strokeRect(10, 10, roiCanvas.width - 20, roiCanvas.height - 20);
+        roiCtx.setLineDash([]);
+        
+        roiCtx.fillStyle = '#6c757d';
+        roiCtx.font = '24px Arial';
+        roiCtx.textAlign = 'center';
+        roiCtx.fillText('{{ camera.name }}', roiCanvas.width/2, roiCanvas.height/2 - 10);
+        roiCtx.font = '16px Arial';
+        roiCtx.fillText('Click "Load Thumbnail" or upload an image', roiCanvas.width/2, roiCanvas.height/2 + 20);
+    }
+}
+
+function loadThumbnail() {
+    // Try to load existing thumbnail first
+    const existingThumbnailUrl = '{% if camera.thumbnail %}{{ camera.thumbnail.url }}{% else %}{% endif %}';
+    if (existingThumbnailUrl) {
+        const img = new Image();
+        img.onload = function() {
+            thumbnailImage = img;
+            resizeCanvasToImage();
+            clearCanvas();
+            redrawROI();
+        };
+        img.src = existingThumbnailUrl;
+        return;
+    }
+    
+    // Check if file input has a file
+    const fileInput = document.getElementById('thumbnailInput');
+    if (fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                thumbnailImage = img;
+                resizeCanvasToImage();
+                clearCanvas();
+                redrawROI();
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleCanvasClick(e) {
+    const rect = roiCanvas.getBoundingClientRect();
+    const scaleX = roiCanvas.width / rect.width;
+    const scaleY = roiCanvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    if (drawMode === 'polygon') {
+        currentPolygon.push({x: x, y: y});
+        redrawROI();
+        drawCurrentPolygon();
+    } else if (drawMode === 'rectangle') {
+        if (!isDrawing) {
+            // Start rectangle
+            isDrawing = true;
+            currentPolygon = [{x: x, y: y}];
+        } else {
+            // End rectangle
+            currentPolygon.push({x: x, y: y});
+            completeRectangle();
+            isDrawing = false;
+        }
+    } else if (drawMode === 'line') {
+        if (!isDrawing) {
+            // Start line
+            isDrawing = true;
+            currentPolygon = [{x: x, y: y}];
+        } else {
+            // End line
+            currentPolygon.push({x: x, y: y});
+            completeLine();
+            isDrawing = false;
+        }
+    } else if (drawMode === 'circle') {
+        if (!isDrawing) {
+            // Start circle (center point)
+            isDrawing = true;
+            currentPolygon = [{x: x, y: y}];
+        } else {
+            // End circle (radius point)
+            currentPolygon.push({x: x, y: y});
+            completeCircle();
+            isDrawing = false;
+        }
+    }
+}
+
+function handleCanvasDoubleClick(e) {
+    if (drawMode === 'polygon' && currentPolygon.length >= 3) {
+        // Complete polygon
+        roiData.push({
+            type: 'polygon',
+            points: [...currentPolygon]
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function handleCanvasMouseMove(e) {
+    const rect = roiCanvas.getBoundingClientRect();
+    const scaleX = roiCanvas.width / rect.width;
+    const scaleY = roiCanvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    if (drawMode === 'rectangle' && isDrawing && currentPolygon.length === 1) {
+        redrawROI();
+        drawCurrentRectangle(currentPolygon[0].x, currentPolygon[0].y, x, y);
+    } else if (drawMode === 'line' && isDrawing && currentPolygon.length === 1) {
+        redrawROI();
+        drawCurrentLine(currentPolygon[0].x, currentPolygon[0].y, x, y);
+    } else if (drawMode === 'circle' && isDrawing && currentPolygon.length === 1) {
+        redrawROI();
+        drawCurrentCircle(currentPolygon[0].x, currentPolygon[0].y, x, y);
+    } else if (drawMode === 'polygon' && currentPolygon.length > 0) {
+        redrawROI();
+        drawCurrentPolygon();
+        
+        // Draw preview line to cursor
+        roiCtx.strokeStyle = '#007bff';
+        roiCtx.lineWidth = 2;
+        roiCtx.setLineDash([3, 3]);
+        roiCtx.beginPath();
+        roiCtx.moveTo(currentPolygon[currentPolygon.length - 1].x, currentPolygon[currentPolygon.length - 1].y);
+        roiCtx.lineTo(x, y);
+        roiCtx.stroke();
+        roiCtx.setLineDash([]);
+    }
+}
+
+function completeRectangle() {
+    if (currentPolygon.length === 2) {
+        const start = currentPolygon[0];
+        const end = currentPolygon[1];
+        
+        roiData.push({
+            type: 'rectangle',
+            x: Math.min(start.x, end.x),
+            y: Math.min(start.y, end.y),
+            width: Math.abs(end.x - start.x),
+            height: Math.abs(end.y - start.y)
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function completeLine() {
+    if (currentPolygon.length === 2) {
+        const start = currentPolygon[0];
+        const end = currentPolygon[1];
+        
+        roiData.push({
+            type: 'line',
+            x1: start.x,
+            y1: start.y,
+            x2: end.x,
+            y2: end.y
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function completeCircle() {
+    if (currentPolygon.length === 2) {
+        const center = currentPolygon[0];
+        const edge = currentPolygon[1];
+        const radius = Math.sqrt(Math.pow(edge.x - center.x, 2) + Math.pow(edge.y - center.y, 2));
+        
+        roiData.push({
+            type: 'circle',
+            centerX: center.x,
+            centerY: center.y,
+            radius: radius
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function drawCurrentPolygon() {
+    if (currentPolygon.length === 0) return;
+    
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 3;
+    roiCtx.setLineDash([8, 4]);
+    
+    roiCtx.beginPath();
+    roiCtx.moveTo(currentPolygon[0].x, currentPolygon[0].y);
+    for (let i = 1; i < currentPolygon.length; i++) {
+        roiCtx.lineTo(currentPolygon[i].x, currentPolygon[i].y);
+    }
+    roiCtx.stroke();
+    roiCtx.setLineDash([]);
+    
+    // Draw points
+    roiCtx.fillStyle = '#007bff';
+    currentPolygon.forEach(point => {
+        roiCtx.beginPath();
+        roiCtx.arc(point.x, point.y, 6, 0, 2 * Math.PI);
+        roiCtx.fill();
+    });
+}
+
+function drawCurrentRectangle(x1, y1, x2, y2) {
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 2;
+    roiCtx.setLineDash([5, 5]);
+    roiCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    roiCtx.setLineDash([]);
+}
+
+function drawCurrentLine(x1, y1, x2, y2) {
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 3;
+    roiCtx.setLineDash([5, 5]);
+    roiCtx.beginPath();
+    roiCtx.moveTo(x1, y1);
+    roiCtx.lineTo(x2, y2);
+    roiCtx.stroke();
+    roiCtx.setLineDash([]);
+    
+    // Draw start and end points
+    roiCtx.fillStyle = '#007bff';
+    roiCtx.beginPath();
+    roiCtx.arc(x1, y1, 4, 0, 2 * Math.PI);
+    roiCtx.fill();
+    roiCtx.beginPath();
+    roiCtx.arc(x2, y2, 4, 0, 2 * Math.PI);
+    roiCtx.fill();
+}
+
+function drawCurrentCircle(centerX, centerY, edgeX, edgeY) {
+    const radius = Math.sqrt(Math.pow(edgeX - centerX, 2) + Math.pow(edgeY - centerY, 2));
+    
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 2;
+    roiCtx.setLineDash([5, 5]);
+    roiCtx.beginPath();
+    roiCtx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    roiCtx.stroke();
+    roiCtx.setLineDash([]);
+    
+    // Draw center point
+    roiCtx.fillStyle = '#007bff';
+    roiCtx.beginPath();
+    roiCtx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+    roiCtx.fill();
+}
+
+function redrawROI() {
+    clearCanvas();
+    
+    // Draw saved ROI regions
+    roiData.forEach((roi, index) => {
+        if (roi.type === 'polygon') {
+            drawPolygon(roi.points, index);
+        } else if (roi.type === 'rectangle') {
+            drawRectangle(roi, index);
+        } else if (roi.type === 'line') {
+            drawLine(roi, index);
+        } else if (roi.type === 'circle') {
+            drawCircle(roi, index);
+        }
+    });
+}
+
+function drawPolygon(points, index) {
+    roiCtx.strokeStyle = '#28a745';
+    roiCtx.fillStyle = 'rgba(40, 167, 69, 0.2)';
+    roiCtx.lineWidth = 3;
+    
+    roiCtx.beginPath();
+    roiCtx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        roiCtx.lineTo(points[i].x, points[i].y);
+    }
+    roiCtx.closePath();
+    roiCtx.fill();
+    roiCtx.stroke();
+    
+    // Add label
+    roiCtx.fillStyle = '#28a745';
+    roiCtx.font = '12px Arial';
+    roiCtx.fillText(`ROI ${index + 1}`, points[0].x + 5, points[0].y - 5);
+}
+
+function drawRectangle(roi, index) {
+    roiCtx.strokeStyle = '#28a745';
+    roiCtx.fillStyle = 'rgba(40, 167, 69, 0.2)';
+    roiCtx.lineWidth = 2;
+    
+    roiCtx.fillRect(roi.x, roi.y, roi.width, roi.height);
+    roiCtx.strokeRect(roi.x, roi.y, roi.width, roi.height);
+    
+    // Add label
+    roiCtx.fillStyle = '#28a745';
+    roiCtx.font = '12px Arial';
+    roiCtx.fillText(`ROI ${index + 1}`, roi.x + 5, roi.y - 5);
+}
+
+function drawLine(roi, index) {
+    roiCtx.strokeStyle = '#dc3545';
+    roiCtx.lineWidth = 3;
+    
+    roiCtx.beginPath();
+    roiCtx.moveTo(roi.x1, roi.y1);
+    roiCtx.lineTo(roi.x2, roi.y2);
+    roiCtx.stroke();
+    
+    // Draw start and end points
+    roiCtx.fillStyle = '#dc3545';
+    roiCtx.beginPath();
+    roiCtx.arc(roi.x1, roi.y1, 5, 0, 2 * Math.PI);
+    roiCtx.fill();
+    roiCtx.beginPath();
+    roiCtx.arc(roi.x2, roi.y2, 5, 0, 2 * Math.PI);
+    roiCtx.fill();
+    
+    // Add label
+    roiCtx.fillStyle = '#dc3545';
+    roiCtx.font = '12px Arial';
+    const midX = (roi.x1 + roi.x2) / 2;
+    const midY = (roi.y1 + roi.y2) / 2;
+    roiCtx.fillText(`ROI ${index + 1}`, midX + 5, midY - 5);
+}
+
+function drawCircle(roi, index) {
+    roiCtx.strokeStyle = '#fd7e14';
+    roiCtx.fillStyle = 'rgba(253, 126, 20, 0.2)';
+    roiCtx.lineWidth = 2;
+    
+    roiCtx.beginPath();
+    roiCtx.arc(roi.centerX, roi.centerY, roi.radius, 0, 2 * Math.PI);
+    roiCtx.fill();
+    roiCtx.stroke();
+    
+    // Draw center point
+    roiCtx.fillStyle = '#fd7e14';
+    roiCtx.beginPath();
+    roiCtx.arc(roi.centerX, roi.centerY, 4, 0, 2 * Math.PI);
+    roiCtx.fill();
+    
+    // Add label
+    roiCtx.fillStyle = '#fd7e14';
+    roiCtx.font = '12px Arial';
+    roiCtx.fillText(`ROI ${index + 1}`, roi.centerX + roi.radius/2, roi.centerY - roi.radius/2);
+}
+
+function updateCanvasCursor() {
+    if (drawMode === 'polygon') {
+        roiCanvas.style.cursor = 'crosshair';
+    } else {
+        roiCanvas.style.cursor = 'crosshair';
+    }
+}
+
+function updateROICounter() {
+    document.getElementById('roiCounter').textContent = `ROI Count: ${roiData.length}`;
+}
+
+function clearROI() {
+    roiData = [];
+    currentPolygon = [];
+    isDrawing = false;
+    redrawROI();
+    updateROICounter();
+}
+
+function resetROI() {
+    clearROI();
+}
+
+function undoLastROI() {
+    if (roiData.length > 0) {
+        roiData.pop();
+        redrawROI();
+        updateROICounter();
+    } else if (currentPolygon.length > 0) {
+        currentPolygon = [];
+        isDrawing = false;
+        redrawROI();
+    }
+}
+
+function loadCurrentROI() {
+    const savedROIData = '{{ camera.roi_coordinates|default:"[]"|escapejs }}';
+    if (savedROIData && savedROIData !== '[]') {
+        try {
+            roiData = JSON.parse(savedROIData);
+            redrawROI();
+            updateROICounter();
+        } catch (e) {
+            console.error('Error loading current ROI:', e);
+        }
+    }
+}
+
+function saveROI() {
+    if (roiData.length === 0) {
+        alert('No ROI regions defined. Please:\n' +
+              '1. Load a thumbnail image first (Load Thumbnail, Upload Image, or Capture Thumbnail)\n' +
+              '2. Draw at least one ROI region on the image\n' +
+              '3. Then save');        return;
+    }
+    
+    console.log('Saving ROI configuration for camera {{ camera.id }}:', roiData);
+    
+    // Send ROI data to backend
+    fetch(`/cameras/edit/{{ camera.id }}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            action: 'save_roi',
+            roi_data: roiData
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('roiModal'));
+            modal.hide();
+            
+            setTimeout(() => {
+                alert('ROI configuration saved successfully!');
+            }, 500);
+        } else {
+            alert('Error saving ROI: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error saving ROI:', error);
+        alert('Error saving ROI configuration. Please try again.');
+    });
+}
+
+// Function to update URL field based on camera source selection in edit form
+function updateUrlFieldEdit() {
+    const sourceSelect = document.getElementById('cameraSourceSelectEdit');
+    const urlLabel = document.getElementById('urlLabelEdit');
+    const urlInput = document.getElementById('urlInputEdit');
+    const urlHelpText = document.getElementById('urlHelpTextEdit');
+    const usernameField = document.querySelector('input[name="username"]');
+    const passwordField = document.querySelector('input[name="password"]');
+    const usernameContainer = usernameField ? usernameField.closest('.col-md-6') : null;
+    const passwordContainer = passwordField ? passwordField.closest('.col-md-6') : null;
+    
+    if (!sourceSelect || !urlLabel || !urlInput || !urlHelpText) return;
+    
+    const selectedSource = sourceSelect.value;
+    
+    switch(selectedSource) {
+        case 'local':
+            urlLabel.innerHTML = 'Camera Device Index <span class="text-danger">*</span>';
+            urlInput.placeholder = '0';
+            urlHelpText.textContent = 'Enter camera device index (e.g., 0 for first camera, 1 for second)';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        case 'rtsp':
+            urlLabel.innerHTML = 'RTSP URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'rtsp://192.168.1.100:554/stream';
+            urlHelpText.textContent = 'Enter the complete RTSP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+            break;
+        case 'http':
+            urlLabel.innerHTML = 'HTTP Stream URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'http://192.168.1.100:8080/video';
+            urlHelpText.textContent = 'Enter the HTTP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+            break;
+        case 'video_file':
+            urlLabel.innerHTML = 'Video File Path <span class="text-danger">*</span>';
+            urlInput.placeholder = '/path/to/video.mp4';
+            urlHelpText.textContent = 'Enter the full path to the video file';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        case 'youtube':
+            urlLabel.innerHTML = 'YouTube URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'https://www.youtube.com/watch?v=VIDEO_ID';
+            urlHelpText.textContent = 'Enter the YouTube video URL';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        default:
+            urlLabel.innerHTML = 'RTSP URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'rtsp://192.168.1.100:554/stream';
+            urlHelpText.textContent = 'Enter the complete RTSP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+    }
+    
+    // Clear any existing validation errors when source changes
+    urlInput.classList.remove('is-invalid');
+    const existingError = urlInput.parentNode.querySelector('.invalid-feedback');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+</script>
+{% endblock %}

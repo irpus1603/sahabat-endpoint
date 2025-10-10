@@ -1,0 +1,351 @@
+{% load static %}
+
+<style>
+/* Professional Sidebar Styles */
+.sidebar-menu {
+    transition: all 0.3s ease;
+}
+
+.nav-item {
+    margin-bottom: 2px;
+}
+
+.nav-link {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 0 8px;
+    transition: all 0.3s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: #6c757d;
+}
+
+.nav-link:hover {
+    background-color: #f8f9fa;
+    color: #495057;
+    transform: translateX(4px);
+}
+
+.nav-link.active {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.nav-link.active:hover {
+    transform: translateX(0);
+}
+
+/* Dropdown Styles */
+.dropdown-container {
+    position: relative;
+}
+
+.dropdown-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+
+.dropdown-toggle::after {
+    content: '\f282';
+    font-family: 'bootstrap-icons';
+    margin-left: auto;
+    transition: transform 0.3s ease;
+    font-size: 12px;
+}
+
+.dropdown-toggle.expanded::after {
+    transform: rotate(90deg);
+}
+
+.submenu {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.3s ease;
+    padding: 0;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin: 4px 8px 8px 8px;
+}
+
+.submenu.show {
+    max-height: 300px;
+    padding: 8px 0;
+}
+
+.submenu-item {
+    padding: 10px 24px 10px 48px;
+    margin: 2px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: #6c757d;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.submenu-item:hover {
+    background-color: white;
+    color: #495057;
+    transform: translateX(4px);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.submenu-item.active {
+    background: linear-gradient(135deg, #28a745, #20a038);
+    color: white;
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+.submenu-item.active:hover {
+    transform: translateX(0);
+}
+
+/* Badge Styles */
+.nav-badge {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: auto;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* User Section Styles */
+.user-section {
+    background: linear-gradient(135deg, #e9ecef, #dee2e6);
+    border-radius: 8px;
+    margin: 8px;
+    padding: 12px;
+}
+
+.logout-link {
+    color: #dc3545;
+    transition: all 0.3s ease;
+}
+
+.logout-link:hover {
+    background-color: #f8d7da;
+    color: #721c24;
+    transform: translateX(4px);
+}
+
+/* Divider Styles */
+.menu-divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, #dee2e6, transparent);
+    margin: 16px 24px;
+    border: none;
+}
+</style>
+
+<div class="d-flex flex-column h-100 position-sticky pt-3" style="top: 0;">
+    <!-- Brand Logo -->
+    <div class="px-3 mb-4">
+        <a href="{% url 'dashboard' %}" class="navbar-brand text-decoration-none">
+            <img src="{% static 'assets/logo-indosat.png' %}" alt="Indosat" class="img-fluid mb-2" style="max-height: 200px;">
+        </a>
+        
+    </div>
+    
+    <!-- Navigation Menu -->
+    <ul class="nav flex-column sidebar-menu">
+        <li class="nav-item">
+            <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" 
+               href="{% url 'dashboard' %}">
+                <i class="bi bi-speedometer2 me-2"></i>
+                Dashboard
+            </a>
+        </li>
+        
+        <li class="nav-item">
+            <a class="nav-link {% if request.resolver_match.url_name == 'camera_settings' %}active{% endif %}" 
+               href="{% url 'camera_settings' %}">
+                <i class="bi bi-camera me-2"></i>
+                Camera Settings
+            </a>
+        </li>
+        
+        <!-- AI Camera Group Menu -->
+        <li class="nav-item dropdown-container">
+            <a class="nav-link dropdown-toggle {% if 'aicamera' in request.resolver_match.url_name%}active{% endif %}" 
+               href="#" onclick="toggleSubmenu('aiCameraSubmenu', this)">
+                <i class="bi bi-robot me-2"></i>
+                AI Camera
+            </a>
+            <div class="submenu" id="aiCameraSubmenu">
+                <a class="submenu-item {% if request.resolver_match.url_name == 'all_ai' %}active{% endif %}" 
+                   href="{% url 'all_ai' %}">
+                    <i class="bi bi-grid me-2 text-info"></i>
+                    All AI Cameras
+                </a>
+                
+            </div>
+        </li>
+
+        <!-- PPE Camera Group Menu -->
+        <li class="nav-item dropdown-container">
+            <a class="nav-link dropdown-toggle {% if 'ppe' in request.resolver_match.url_name %}active{% endif %}" 
+               href="#" onclick="toggleSubmenu('ppeCameraSubmenu', this)">
+                <i class="bi bi-shield-check me-2"></i>
+                PPE Detection
+            </a>
+            <div class="submenu" id="ppeCameraSubmenu">
+                <a class="submenu-item {% if request.resolver_match.url_name == 'list_ppe_camera' %}active{% endif %}" 
+                   href="{% url 'list_ppe_camera' %}">
+                    <i class="bi bi-camera me-2 text-info"></i>
+                    PPE Cameras
+                </a>
+                <a class="submenu-item {% if request.resolver_match.url_name == 'ppe_reports' %}active{% endif %}" 
+                   href="{% url 'ppe_reports' %}">
+                    <i class="bi bi-file-earmark-bar-graph me-2 text-success"></i>
+                    PPE Reports
+                </a>
+            </div>
+        </li>
+
+        <!-- Intrusion Camera Group Menu -->
+        <li class="nav-item dropdown-container">
+            <a class="nav-link dropdown-toggle {% if 'intrusion' in request.resolver_match.url_name %}active{% endif %}" 
+               href="#" onclick="toggleSubmenu('intrusionCameraSubmenu', this)">
+                <i class="bi bi-shield-check me-2"></i>
+                Intrusion Detection
+            </a>
+            <div class="submenu" id="intrusionCameraSubmenu">
+                <a class="submenu-item {% if request.resolver_match.url_name == 'list_intrusion_camera' %}active{% endif %}" 
+                   href="{% url 'list_intrusion_camera' %}">
+                    <i class="bi bi-camera me-2 text-info"></i>
+                    Intrusion Cameras
+                </a>
+                <a class="submenu-item {% if request.resolver_match.url_name == 'intrusion_report' %}active{% endif %}" 
+                   href="{% url 'intrusion_report' %}">
+                    <i class="bi bi-file-earmark-bar-graph me-2 text-success"></i>
+                    Intrusion Reports
+                </a>
+            </div>
+        </li>
+        
+        <!-- People Counting Camera Group Menu -->
+        <li class="nav-item dropdown-container">
+            <a class="nav-link dropdown-toggle {% if 'peoplecounting' in request.resolver_match.url_name %}active{% endif %}" 
+               href="#" onclick="toggleSubmenu('peopleCountingCameraSubmenu', this)">
+                <i class="bi bi-shield-check me-2"></i>
+                People Counting
+            </a>
+            <div class="submenu" id="peopleCountingCameraSubmenu">
+                <a class="submenu-item {% if request.resolver_match.url_name == 'list_people_counting_camera' %}active{% endif %}" 
+                   href="{% url 'list_people_counting_camera' %}">
+                    <i class="bi bi-camera me-2 text-info"></i>
+                    People Counting Cameras
+                </a>
+                <a class="submenu-item {% if request.resolver_match.url_name == 'intrusion_report' %}active{% endif %}" 
+                   href="{% url 'intrusion_report' %}">
+                    <i class="bi bi-file-earmark-bar-graph me-2 text-success"></i>
+                    People Counting Reports
+                </a>
+            </div>
+        </li>
+
+        <li class="nav-item">
+            <a class="nav-link {% if request.resolver_match.url_name == 'alerts' %}active{% endif %}" 
+               href="{% url 'alerts' %}">
+                <i class="bi bi-bell me-2"></i>
+                Alerts
+                <span class="nav-badge">3</span>
+            </a>
+        </li>
+        
+        <!-- Divider -->
+        <li><hr class="menu-divider"></li>
+        
+        <li class="nav-item">
+            <a class="nav-link {% if request.resolver_match.url_name == 'detections' %}active{% endif %}" 
+               href="{% url 'detections' %}">
+                <i class="bi bi-search me-2"></i>
+                Detections
+            </a>
+        </li>
+        
+        <li class="nav-item">
+            <a class="nav-link {% if request.resolver_match.url_name == 'system_config' %}active{% endif %}" 
+               href="{% url 'system_config' %}">
+                <i class="bi bi-gear me-2"></i>
+                System Config
+            </a>
+        </li>
+        
+        <!-- Divider -->
+        <li><hr class="menu-divider"></li>
+        
+        <!-- User Section -->
+        <li class="nav-item">
+            <div class="user-section">
+                <div class="d-flex align-items-center text-muted mb-2">
+                    <i class="bi bi-person-circle me-2"></i>
+                    <small class="fw-bold">{{ user.username }} | {{ user.first_name }}</small>
+                </div>
+                <a class="nav-link logout-link" href="#" onclick="confirmLogout()">
+                    <i class="bi bi-box-arrow-right me-2"></i>
+                    Logout
+                </a>
+            </div>
+        </li>
+    </ul>
+    
+    <!-- Footer in Sidebar -->
+    <div class="px-3 py-2 border-top text-muted mt-auto">
+        <small class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Version 1.0 | {{ user.username }}
+        </small>
+    </div>
+</div>
+
+<script>
+function toggleSubmenu(submenuId, toggleElement) {
+    const submenu = document.getElementById(submenuId);
+    const isExpanded = submenu.classList.contains('show');
+    
+    // Close all other submenus
+    document.querySelectorAll('.submenu.show').forEach(menu => {
+        if (menu.id !== submenuId) {
+            menu.classList.remove('show');
+            const toggle = document.querySelector(`[onclick*="${menu.id}"]`);
+            if (toggle) toggle.classList.remove('expanded');
+        }
+    });
+    
+    // Toggle current submenu
+    if (isExpanded) {
+        submenu.classList.remove('show');
+        toggleElement.classList.remove('expanded');
+    } else {
+        submenu.classList.add('show');
+        toggleElement.classList.add('expanded');
+    }
+}
+
+// Initialize submenu state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if any submenu item is active and expand parent
+    const activeSubmenuItem = document.querySelector('.submenu-item.active');
+    if (activeSubmenuItem) {
+        const parentSubmenu = activeSubmenuItem.closest('.submenu');
+        if (parentSubmenu) {
+            parentSubmenu.classList.add('show');
+            const toggle = document.querySelector(`[onclick*="${parentSubmenu.id}"]`);
+            if (toggle) toggle.classList.add('expanded');
+        }
+    }
+});
+</script>

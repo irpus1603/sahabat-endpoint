@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SOCA Edge Surveillance</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+        
+        .login-card {
+            max-width: 480px;
+            width: 100%;
+            backdrop-filter: blur(15px);
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            border-radius: 1.5rem;
+            overflow: hidden;
+        }
+        
+        .login-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .brand-logo {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .form-control:focus {
+            border-color: #2a5298;
+            box-shadow: 0 0 0 0.2rem rgba(42, 82, 152, 0.25);
+        }
+        
+        .btn-login {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            padding: 0.75rem 2rem;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(42, 82, 152, 0.4);
+            color: white;
+        }
+        
+        .btn-login:active {
+            transform: translateY(0);
+        }
+        
+        .floating-cameras {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        .camera-icon {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.1);
+            animation: float 8s ease-in-out infinite;
+            font-size: 2rem;
+        }
+        
+        .camera-icon:nth-child(1) {
+            top: 15%;
+            left: 10%;
+            animation-delay: 0s;
+            font-size: 3rem;
+        }
+        
+        .camera-icon:nth-child(2) {
+            top: 60%;
+            right: 15%;
+            animation-delay: 3s;
+            font-size: 2.5rem;
+        }
+        
+        .camera-icon:nth-child(3) {
+            bottom: 20%;
+            left: 20%;
+            animation-delay: 6s;
+            font-size: 2rem;
+        }
+        
+        .camera-icon:nth-child(4) {
+            top: 30%;
+            right: 30%;
+            animation-delay: 1.5s;
+            font-size: 2.2rem;
+        }
+        
+        @keyframes float {
+            0%, 100% { 
+                transform: translateY(0px) rotate(0deg); 
+                opacity: 0.1;
+            }
+            25% { 
+                transform: translateY(-10px) rotate(2deg); 
+                opacity: 0.15;
+            }
+            50% { 
+                transform: translateY(-20px) rotate(-2deg); 
+                opacity: 0.1;
+            }
+            75% { 
+                transform: translateY(-10px) rotate(1deg); 
+                opacity: 0.12;
+            }
+        }
+        
+        .input-group-text {
+            background: transparent;
+            border-right: none;
+            color: #6c757d;
+        }
+        
+        .form-control {
+            border-left: none;
+            padding-left: 0;
+        }
+        
+        .input-group:focus-within .input-group-text {
+            border-color: #2a5298;
+        }
+        
+        .security-badge {
+            background: rgba(42, 82, 152, 0.1);
+            border: 1px solid rgba(42, 82, 152, 0.2);
+            color: #2a5298;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .system-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 0.75rem 1rem;
+            border-radius: 50px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            font-size: 0.875rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Floating Camera Icons -->
+    <div class="floating-cameras">
+        <i class="bi bi-camera-video camera-icon"></i>
+        <i class="bi bi-shield-check camera-icon"></i>
+        <i class="bi bi-eye camera-icon"></i>
+        <i class="bi bi-camera-video-fill camera-icon"></i>
+    </div>
+
+    <div class="login-container">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-lg-6 col-md-8">
+                    <div class="card login-card border-0">
+                        <!-- Header -->
+                        <div class="login-header">
+                            <i class="bi bi-camera-video brand-logo"></i>
+                            <h1 class="h3 fw-bold mb-2">SOCA Edge</h1>
+                            <p class="mb-0 opacity-75">Surveillance & Security System</p>
+                            <small class="opacity-50">AI Based Computing Platform</small>
+                        </div>
+
+                        <!-- Login Form -->
+                        <div class="card-body p-4">
+                            <div class="text-center mb-4">
+                                <h4 class="fw-bold text-dark">System Login</h4>
+                                <p class="text-muted">Enter your credentials to access the surveillance dashboard</p>
+                            </div>
+
+                            <!-- Error Messages -->
+                            {% if form.errors %}
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    <strong>Login Failed!</strong>
+                                    {% for field, errors in form.errors.items %}
+                                        {% for error in errors %}
+                                            <br>{{ error }}
+                                        {% endfor %}
+                                    {% endfor %}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endif %}
+
+                            <!-- Django Messages -->
+                            {% if messages %}
+                                {% for message in messages %}
+                                    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+                                        <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle{% elif message.tags == 'success' %}check-circle{% elif message.tags == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+
+                            <form method="post" novalidate>
+                                {% csrf_token %}
+                                
+                                <!-- Username Field -->
+                                <div class="mb-3">
+                                    <label for="id_username" class="form-label fw-medium text-dark">
+                                        <i class="bi bi-person me-2"></i>Username
+                                    </label>
+                                    <div class="input-group">
+                                        <span class="input-group-text border-end-0">
+                                            <i class="bi bi-person"></i>
+                                        </span>
+                                        <input type="text" 
+                                               class="form-control form-control-lg border-start-0" 
+                                               id="id_username" 
+                                               name="username" 
+                                               value="{{ form.username.value|default:'' }}"
+                                               placeholder="Enter username"
+                                               required
+                                               autofocus>
+                                    </div>
+                                    {% if form.username.errors %}
+                                        <div class="text-danger small mt-1">
+                                            {% for error in form.username.errors %}
+                                                <i class="bi bi-exclamation-circle me-1"></i>{{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Password Field -->
+                                <div class="mb-4">
+                                    <label for="id_password" class="form-label fw-medium text-dark">
+                                        <i class="bi bi-lock me-2"></i>Password
+                                    </label>
+                                    <div class="input-group">
+                                        <span class="input-group-text border-end-0">
+                                            <i class="bi bi-lock"></i>
+                                        </span>
+                                        <input type="password" 
+                                               class="form-control form-control-lg border-start-0 border-end-0" 
+                                               id="id_password" 
+                                               name="password"
+                                               placeholder="Enter password"
+                                               required>
+                                        <button type="button" class="btn btn-outline-secondary border-start-0" onclick="togglePassword()">
+                                            <i class="bi bi-eye" id="passwordToggleIcon"></i>
+                                        </button>
+                                    </div>
+                                    {% if form.password.errors %}
+                                        <div class="text-danger small mt-1">
+                                            {% for error in form.password.errors %}
+                                                <i class="bi bi-exclamation-circle me-1"></i>{{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Remember Me -->
+                                <div class="d-flex justify-content-between align-items-center mb-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="remember_me" name="remember_me">
+                                        <label class="form-check-label" for="remember_me">
+                                            Remember this device
+                                        </label>
+                                    </div>
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none" onclick="showSecurityInfo()">
+                                        <i class="bi bi-question-circle me-1"></i>Need help?
+                                    </button>
+                                </div>
+
+                                <!-- Login Button -->
+                                <div class="d-grid mb-4">
+                                    <button type="submit" class="btn btn-login btn-lg">
+                                        <i class="bi bi-shield-check me-2"></i>
+                                        Access System
+                                    </button>
+                                </div>
+
+                                <!-- Redirect Field -->
+                                {% if next %}
+                                    <input type="hidden" name="next" value="{{ next }}">
+                                {% endif %}
+                            </form>
+
+                            <!-- Security Notice -->
+                            <div class="security-badge text-center">
+                                <i class="bi bi-shield-lock me-2"></i>
+                                <strong>Secure Login:</strong> All communications are encrypted
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="card-footer bg-light text-center py-3 border-0">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <i class="bi bi-camera-video-fill text-primary"></i>
+                                    <div class="small text-muted">Multi-Camera</div>
+                                </div>
+                                <div class="col-4">
+                                    <i class="bi bi-cpu text-success"></i>
+                                    <div class="small text-muted">NVIDIA</div>
+                                </div>
+                                <div class="col-4">
+                                    <i class="bi bi-shield-check text-info"></i>
+                                    <div class="small text-muted">Secure</div>
+                                </div>
+                            </div>
+                            <hr class="my-3">
+                            <small class="text-muted">
+                                © 2025 SOCA Edge Surveillance System | Version 1.0
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Additional Links -->
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status Indicator -->
+    <div class="system-status">
+        <i class="bi bi-circle-fill text-success pulse me-2"></i>
+        <strong>System Online</strong>
+    </div>
+
+    <!-- Security Info Modal -->
+    <div class="modal fade" id="securityModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-shield-lock me-2"></i>
+                        Login Help & Security
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Forgot your login credentials?</strong>
+                    </div>
+                    <p>Contact your system administrator for assistance:</p>
+                    <div class="bg-light p-3 rounded">
+                        <h6 class="fw-bold mb-2">
+                            <i class="bi bi-person-badge me-2"></i>Administrator Contact:
+                        </h6>
+                        <ul class="mb-2">
+                            <li><strong>Email:</strong> supriyadi1@ioh.co.id</li>
+                            <li><strong>Phone:</strong> 0816769003</li>
+                            <li><strong>Support:</strong> Monday - Friday, 9 AM - 5 PM</li>
+                        </ul>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h6 class="fw-bold mb-2">
+                        <i class="bi bi-shield-check me-2"></i>Security Features:
+                    </h6>
+                    <ul class="small">
+                        <li>256-bit SSL/TLS encryption</li>
+                        <li>Session timeout protection</li>
+                        <li>Failed login attempt monitoring</li>
+                        <li>Secure password policies</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="mailto:supriyadi1@ioh.co.id" class="btn btn-primary">
+                        <i class="bi bi-envelope me-1"></i>
+                        Contact Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Info Modal -->
+    <div class="modal fade" id="systemInfoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cpu me-2"></i>
+                        System Information
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold">
+                                <i class="bi bi-camera-video me-2"></i>System Details:
+                            </h6>
+                            <ul class="small">
+                                <li><strong>Platform:</strong> SOCA Edge</li>
+                                <li><strong>Processor:</strong> Intel i5</li>
+                                <li><strong>Framework:</strong> Django 5.1</li>
+                                <li><strong>Version:</strong> 1.0.0</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="fw-bold">
+                                <i class="bi bi-gear me-2"></i>Capabilities:
+                            </h6>
+                            <ul class="small">
+                                <li>Multi-camera surveillance</li>
+                                <li>Real-time detection</li>
+                                <li>Alert management</li>
+                                <li>Video analytics</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Toggle password visibility
+        function togglePassword() {
+            const passwordField = document.getElementById('id_password');
+            const toggleIcon = document.getElementById('passwordToggleIcon');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleIcon.classList.remove('bi-eye');
+                toggleIcon.classList.add('bi-eye-slash');
+            } else {
+                passwordField.type = 'password';
+                toggleIcon.classList.remove('bi-eye-slash');
+                toggleIcon.classList.add('bi-eye');
+            }
+        }
+
+        // Show security info modal
+        function showSecurityInfo() {
+            const securityModal = new bootstrap.Modal(document.getElementById('securityModal'));
+            securityModal.show();
+        }
+
+        // Show system info modal
+        function showSystemInfo() {
+            const systemInfoModal = new bootstrap.Modal(document.getElementById('systemInfoModal'));
+            systemInfoModal.show();
+        }
+
+        // Auto-dismiss alerts
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    if (alert && !alert.classList.contains('d-none')) {
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }
+                }, 5000);
+            });
+        });
+
+        // Form submission with loading state
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const username = document.getElementById('id_username').value.trim();
+            const password = document.getElementById('id_password').value;
+            
+            if (username && password) {
+                const submitBtn = document.querySelector('button[type="submit"]');
+                const originalHtml = submitBtn.innerHTML;
+                
+                submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Authenticating...';
+                submitBtn.disabled = true;
+                
+                // Re-enable after timeout
+                setTimeout(() => {
+                    if (submitBtn.disabled) {
+                        submitBtn.innerHTML = originalHtml;
+                        submitBtn.disabled = false;
+                    }
+                }, 10000);
+            }
+        });
+
+        // Enhanced form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const username = document.getElementById('id_username').value.trim();
+            const password = document.getElementById('id_password').value;
+            
+            if (!username || !password) {
+                e.preventDefault();
+                
+                // Create validation alert if it doesn't exist
+                let existingAlert = document.querySelector('.alert-warning');
+                if (!existingAlert) {
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-warning alert-dismissible fade show';
+                    alert.innerHTML = `
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Validation Error:</strong> Please enter both username and password.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    
+                    const form = document.querySelector('form');
+                    form.insertBefore(alert, form.firstChild);
+                    
+                    // Auto-dismiss
+                    setTimeout(() => {
+                        if (alert && !alert.classList.contains('d-none')) {
+                            const bsAlert = new bootstrap.Alert(alert);
+                            bsAlert.close();
+                        }
+                    }, 4000);
+                }
+                
+                // Focus on empty field
+                if (!username) {
+                    document.getElementById('id_username').focus();
+                } else {
+                    document.getElementById('id_password').focus();
+                }
+            }
+        });
+
+        // Add interactive feedback
+        document.querySelectorAll('.form-control').forEach(function(input) {
+            input.addEventListener('focus', function() {
+                this.closest('.input-group').classList.add('focused');
+            });
+            
+            input.addEventListener('blur', function() {
+                this.closest('.input-group').classList.remove('focused');
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+/ to show help
+            if (e.ctrlKey && e.key === '/') {
+                e.preventDefault();
+                showSecurityInfo();
+            }
+            
+            // Ctrl+I to show system info
+            if (e.ctrlKey && e.key === 'i') {
+                e.preventDefault();
+                showSystemInfo();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+# MediaMTX configuration for SOCA Edge Detection Streams
+# This configuration allows MediaMTX to receive RTSP streams from the video processor
+# and republish them for viewing/consumption
+
+# General settings
+logLevel: info
+logDestinations: [stdout, file]
+logFile: mediamtx.log
+
+# API settings
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# Metrics
+metrics: yes
+metricsAddress: 127.0.0.1:9998
+
+# RTSP server settings
+rtspDisable: no
+rtspAddress: :8554
+rtspReadTimeout: 10s
+rtspWriteTimeout: 10s
+
+# RTMP server settings (optional)
+rtmpDisable: yes
+
+# HLS server settings (optional - can be used for web viewing)
+hlsDisable: no
+hlsAddress: :8888
+hlsEncryption: no
+hlsAllowOrigin: "*"
+
+# WebRTC settings (optional - for web browser viewing)
+webrtcDisable: no
+webrtcAddress: :8889
+webrtcAllowOrigin: "*"
+
+# Default path settings
+pathDefaults:
+  # Source settings - where streams come from
+  source: publisher
+  sourceProtocol: automatic
+  sourceAnyPortEnable: no
+  
+  # Allow publishing (receiving streams from video processor)
+  publishUser: ""
+  publishPass: ""
+  publishIPs: []
+  
+  # Allow reading (viewing streams)
+  readUser: ""
+  readPass: ""
+  readIPs: []
+  
+  # Recording settings (optional)
+  record: no
+  
+  # Allow fallback to other sources
+  fallback: ""
+
+# Specific paths for camera detection streams
+paths:
+  # Default catch-all for detection streams
+  ~^(.*)_detection$:
+    source: publisher
+    publishUser: ""
+    publishPass: ""
+    readUser: ""
+    readPass: ""
+    
+  # You can add specific camera paths here if needed
+  # Example for specific camera:
+  # bardi_kamar_detection:
+  #   source: publisher
+  #   publishUser: ""
+  #   publishPass: ""
+  #   readUser: ""
+  #   readPass: ""

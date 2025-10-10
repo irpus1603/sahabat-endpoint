@@ -1,0 +1,2803 @@
+{% extends 'core/base.html' %}
+{% load static %}
+{% load auth_extras %}
+
+{% block title %}Camera Settings - SOCA Edge{% endblock %}
+
+{% block page_title %}Camera Settings{% endblock %}
+{% block page_subtitle %}Manage camera configurations{% endblock %}
+
+{% block content %}
+<!-- Django Messages -->
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle{% elif message.tags == 'success' %}check-circle{% elif message.tags == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row">
+    <!-- Camera Statistics -->
+    <div class="col-12 mb-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <i class="bi bi-camera text-primary fs-1"></i>
+                        <h5 class="card-title mt-2">Total Cameras</h5>
+                        <h3 class="text-primary">{{ total_cameras }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        <i class="bi bi-camera-video text-success fs-1"></i>
+                        <h5 class="card-title mt-2">Active</h5>
+                        <h3 class="text-success">{{ active_cameras }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning">
+                    <div class="card-body text-center">
+                        <i class="bi bi-camera-video-off text-warning fs-1"></i>
+                        <h5 class="card-title mt-2">Inactive</h5>
+                        <h3 class="text-warning">{{ inactive_cameras }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        <i class="bi bi-broadcast text-info fs-1"></i>
+                        <h5 class="card-title mt-2">Streaming</h5>
+                        <h3 class="text-info">{{ streaming_cameras }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Management -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Camera Management</h5>
+                <div class="btn-group">
+                    {% if user|can_add_camera %}
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCameraModal">
+                        <i class="bi bi-plus-circle me-2"></i>Add Camera
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-primary" id="refreshCameras">
+                        <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Status</th>
+                                <th>Camera Name</th>
+                                <th>RTSP URL</th>
+                                <th>Authentication</th>
+                                <th>ROI Configured</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for camera in cameras %}
+                            <tr data-camera-id="{{ camera.id }}">
+                                <td>
+                                    {% if camera.is_active %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-circle-fill me-1"></i>Active
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-pause-fill me-1"></i>Inactive
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-camera me-2 text-primary"></i>
+                                        <div>
+                                            <strong>{{ camera.name|default:"Unnamed Camera" }}</strong>
+                                            <br><small class="text-muted">ID: {{ camera.id }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <code class="small">{{ camera.rtsp_url|truncatechars:40 }}</code>
+                                </td>
+                                <td>
+                                    {% if camera.username %}
+                                        <span class="badge bg-info">
+                                            <i class="bi bi-shield-check me-1"></i>Protected
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-unlock me-1"></i>Open
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if camera.roi_coordinates %}
+                                        <span class="badge bg-primary">
+                                            <i class="bi bi-crop me-1"></i>Configured
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark">
+                                            <i class="bi bi-square me-1"></i>Full Frame
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ camera.created_at|date:"M d, Y" }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#viewCameraModal" data-camera-id="{{ camera.id }}">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        {% if user|can_change_camera %}
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        {% endif %}
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                                                <i class="bi bi-gear"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item test-connection" href="#" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-wifi me-2"></i>Test Connection
+                                                </a></li>
+                                                <li><a class="dropdown-item configure-roi" href="#" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-crop me-2"></i>Configure ROI
+                                                </a></li>
+                                                {% if camera.is_active %}
+                                                <li><a class="dropdown-item disable-camera" href="#" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-pause me-2"></i>Disable
+                                                </a></li>
+                                                {% else %}
+                                                <li><a class="dropdown-item enable-camera" href="#" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-play me-2"></i>Enable
+                                                </a></li>
+                                                {% endif %}
+                                                <li><hr class="dropdown-divider"></li>
+                                                {% if user|can_delete_camera %}
+                                                <li><a class="dropdown-item text-danger delete-camera" href="#" data-camera-id="{{ camera.id }}">
+                                                    <i class="bi bi-trash me-2"></i>Delete
+                                                </a></li>
+                                                {% endif %}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="bi bi-camera-plus fs-1"></i>
+                                    <h5 class="mt-3">No Cameras Configured</h5>
+                                    <p>Get started by adding your first camera to the surveillance system.</p>
+                                    {% if user|can_add_camera %}
+                                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCameraModal">
+                                        <i class="bi bi-plus-circle me-2"></i>Add First Camera
+                                    </button>
+                                    {% else %}
+                                    <p class="text-muted">Contact an administrator to add cameras.</p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Camera Modal -->
+{% if user|can_add_camera %}
+<div class="modal fade" id="addCameraModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Camera</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{% url 'camera_add' %}" method="post" id="addCameraForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Camera Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" required placeholder="e.g., Front-Door-Camera">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="is_active">
+                                <option value="true">Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Location Information Section -->
+                        <div class="col-12">
+                            <hr class="my-3">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-geo-alt me-2"></i>Location Information
+                            </h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Site Name</label>
+                            <input type="text" class="form-control" name="site_name" placeholder="e.g., Main Office, Warehouse A">
+                            <div class="form-text">Enter the site or building name</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Floor</label>
+                            <input type="text" class="form-control" name="floor" placeholder="e.g., Ground Floor, 2nd Floor, Basement">
+                            <div class="form-text">Specify the floor level</div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Location Description</label>
+                            <input type="text" class="form-control" name="location" placeholder="e.g., Main Entrance, Production Area, Parking Lot">
+                            <div class="form-text">Detailed location description within the site</div>
+                        </div>
+                        
+                        <!-- Camera Configuration Section -->
+                        <div class="col-12">
+                            <hr class="my-3">
+                            <h6 class="text-primary mb-3">
+                                <i class="bi bi-camera me-2"></i>Camera Configuration
+                            </h6>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Camera Source <span class="text-danger">*</span></label>
+                            <select class="form-select" name="camera_source" id="cameraSourceSelect" onchange="updateUrlField()">
+                                <option value="rtsp">RTSP Stream</option>
+                                <option value="local">Local Camera</option>
+                                <option value="http">HTTP Stream</option>
+                                <option value="video_file">Video File</option>
+                                <option value="youtube">YouTube URL</option>
+                            </select>
+                            <div class="form-text">Select the type of camera source</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" id="urlLabel">RTSP URL <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="rtsp_url" id="urlInput" required placeholder="rtsp://192.168.1.100:554/stream">
+                            <div class="form-text" id="urlHelpText">Enter the complete RTSP stream URL for this camera</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="username" placeholder="Camera username (optional)">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" placeholder="Camera password (optional)">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">AI Module</label>
+                            <select class="form-select" name="aimodule">
+                                <option value="">No AI Module</option>
+                                {% for module in aimodules %}
+                                    <option value="{{ module.id }}">{{ module.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Select an AI module for this camera</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">AI Module Status</label>
+                            <select class="form-select" name="is_aimodule_active">
+                                <option value="false">Inactive</option>
+                                <option value="true">Active</option>
+                            </select>
+                            <div class="form-text">Enable or disable AI module for this camera</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="addCameraSubmitBtn">
+                        <span class="btn-text">Add Camera</span>
+                        <span class="btn-spinner d-none">
+                            <span class="spinner-border spinner-border-sm me-2"></span>Adding...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- View Camera Modal -->
+<div class="modal fade" id="viewCameraModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Camera Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="viewCameraContent">
+                <!-- Camera details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                {% if user|can_change_camera %}
+                <button type="button" class="btn btn-primary" id="editFromViewBtn">Edit Camera</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced ROI Configuration Modal -->
+<div class="modal fade" id="roiModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configure Region of Interest (ROI)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Draw polygons or rectangles on the camera feed to define regions where motion detection should be active. Click to add points, double-click to complete a polygon.
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group">
+                            <input type="radio" class="btn-check" name="drawMode" id="polygonMode" value="polygon" checked>
+                            <label class="btn btn-outline-primary" for="polygonMode">
+                                <i class="bi bi-pentagon me-1"></i>Polygon ROI
+                            </label>
+                            <input type="radio" class="btn-check" name="drawMode" id="rectangleMode" value="rectangle">
+                            <label class="btn btn-outline-primary" for="rectangleMode">
+                                <i class="bi bi-square me-1"></i>Rectangle ROI
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-success btn-sm" id="loadThumbnailBtn">
+                            <i class="bi bi-image me-1"></i>Load Thumbnail
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm" id="captureThumbnailBtn">
+                            <i class="bi bi-camera me-1"></i>Capture
+                        </button>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <span class="badge bg-info" id="roiCounter">ROI Count: 0</span>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-9">
+                        <div class="text-center position-relative">
+                            <canvas id="roiCanvas" width="800" height="600" class="border" style="cursor: crosshair;"></canvas>
+                            <input type="file" class="d-none" id="thumbnailInput" accept="image/*">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">ROI Control</h6>
+                            </div>
+                            <div class="card-body p-2">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-warning btn-sm" id="clearRoiBtn">
+                                        <i class="bi bi-trash me-1"></i>Clear All
+                                    </button>
+                                    <button class="btn btn-info btn-sm" id="resetRoiBtn">
+                                        <i class="bi bi-arrow-clockwise me-1"></i>Reset
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" id="loadCurrentRoiBtn">
+                                        <i class="bi bi-download me-1"></i>Load Current ROI
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" id="undoLastRoiBtn">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i>Undo Last
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">Instructions</h6>
+                            </div>
+                            <div class="card-body p-2">
+                                <small class="text-muted">
+                                    <strong>Polygon Mode:</strong><br>
+                                    • Click to add points<br>
+                                    • Double-click to complete<br><br>
+                                    <strong>Rectangle Mode:</strong><br>
+                                    • Click and drag to draw<br><br>
+                                    <strong>Tips:</strong><br>
+                                    • Load thumbnail first for better accuracy<br>
+                                    • Focus on areas with expected motion<br>
+                                    • Avoid constantly moving objects
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveRoiBtn">Save ROI</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- HLS.js for video capture -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<style>
+/* Enhanced ROI Canvas Styling */
+#roiCanvas {
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    cursor: crosshair;
+}
+
+#roiCanvas:hover {
+    border-color: #0056b3;
+}
+
+/* Thumbnail preview styling */
+.thumbnail-preview img {
+    border: 2px solid #28a745;
+    border-radius: 4px;
+}
+
+/* ROI drawing mode controls */
+.btn-check:checked + .btn {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+/* ROI counter badge */
+#roiCounter {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Loading states for buttons */
+.btn .spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Canvas container responsive design */
+.position-relative {
+    max-width: 100%;
+}
+
+@media (max-width: 768px) {
+    #roiCanvas {
+        width: 100% !important;
+        height: auto !important;
+    }
+}
+</style>
+
+<script>
+// Global variables for advanced ROI functionality
+let roiCanvas, roiCtx;
+let roiData = [];
+let currentPolygon = [];
+let isDrawing = false;
+let drawMode = 'polygon';
+let thumbnailImage = null;
+let currentROICameraId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize form validation
+    initializeFormValidation();
+    
+    // Refresh cameras
+    document.getElementById('refreshCameras').addEventListener('click', function() {
+        window.location.reload();
+    });
+
+
+
+    // Camera actions
+    document.querySelectorAll('.test-connection').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cameraId = this.dataset.cameraId;
+            testCameraConnection(cameraId);
+        });
+    });
+
+    // Configure ROI buttons
+    document.querySelectorAll('.configure-roi').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const cameraId = this.dataset.cameraId;
+            if (!cameraId) {
+                alert('Error: No camera ID found. Please refresh the page.');
+                return;
+            }
+            
+            configureROI(cameraId);
+        });
+    });
+
+    document.querySelectorAll('.enable-camera').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cameraId = this.dataset.cameraId;
+            toggleCamera(cameraId, true);
+        });
+    });
+
+    document.querySelectorAll('.disable-camera').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cameraId = this.dataset.cameraId;
+            toggleCamera(cameraId, false);
+        });
+    });
+
+    document.querySelectorAll('.delete-camera').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cameraId = this.dataset.cameraId;
+            if (confirm('Are you sure you want to delete this camera? This action cannot be undone.')) {
+                deleteCamera(cameraId);
+            }
+        });
+    });
+
+    // View camera modal
+    document.querySelectorAll('[data-bs-target="#viewCameraModal"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const cameraId = this.dataset.cameraId;
+            loadCameraDetails(cameraId);
+        });
+    });
+
+    // Edit camera functionality removed - now uses direct links to camera_edit.html
+
+    // Enhanced ROI configuration
+    document.getElementById('clearRoiBtn').addEventListener('click', clearROI);
+    document.getElementById('resetRoiBtn').addEventListener('click', resetROI);
+    document.getElementById('loadCurrentRoiBtn').addEventListener('click', loadCurrentROI);
+    document.getElementById('loadThumbnailBtn').addEventListener('click', loadThumbnail);
+    document.getElementById('undoLastRoiBtn').addEventListener('click', undoLastROI);
+    document.getElementById('saveRoiBtn').addEventListener('click', saveROI);
+    document.getElementById('captureThumbnailBtn').addEventListener('click', captureThumbnail);
+    
+    // Thumbnail file input
+    document.getElementById('thumbnailInput').addEventListener('change', handleThumbnailUpload);
+    
+    // Edit from view button - navigate to camera edit page
+    document.getElementById('editFromViewBtn').addEventListener('click', function() {
+        if (currentCameraId) {
+            window.location.href = `/cameras/edit/${currentCameraId}/`;
+        }
+    });
+    
+    // Draw mode change
+    document.querySelectorAll('input[name="drawMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            drawMode = this.value;
+            updateCanvasCursor();
+        });
+    });
+    
+    // Initialize ROI canvas when modal is shown
+    document.getElementById('roiModal').addEventListener('shown.bs.modal', function() {
+        initializeROICanvas();
+    });
+    
+    // Initialize submit button state when add camera modal is shown
+    document.getElementById('addCameraModal').addEventListener('shown.bs.modal', function() {
+        updateSubmitButtonState();
+    });
+    
+    // Add modal cleanup handlers
+    setupModalCleanup();
+});
+
+
+function setupModalCleanup() {
+    // Cleanup when modals are hidden
+    const modals = ['#addCameraModal', '#viewCameraModal', '#roiModal'];
+    
+    modals.forEach(modalSelector => {
+        const modalElement = document.querySelector(modalSelector);
+        if (modalElement) {
+            modalElement.addEventListener('hidden.bs.modal', function() {
+                cleanupModalData(modalSelector);
+            });
+        }
+    });
+}
+
+function cleanupModalData(modalSelector) {
+    switch(modalSelector) {
+        case '#addCameraModal':
+            // Clear form data
+            const addForm = document.getElementById('addCameraForm');
+            if (addForm) {
+                addForm.reset();
+                // Clear validation errors
+                addForm.querySelectorAll('.is-invalid').forEach(field => {
+                    field.classList.remove('is-invalid');
+                });
+                addForm.querySelectorAll('.invalid-feedback').forEach(feedback => {
+                    feedback.remove();
+                });
+            }
+            break;
+            
+        case '#viewCameraModal':
+            // Stop stream timer and clear content
+            if (streamTimer) {
+                clearInterval(streamTimer);
+                streamTimer = null;
+            }
+            const viewContent = document.getElementById('viewCameraContent');
+            if (viewContent) {
+                viewContent.innerHTML = '<!-- Camera details will be loaded here -->';
+            }
+            currentCameraId = null;
+            break;
+            
+        case '#roiModal':
+            // Clear ROI data and canvas
+            roiRects = [];
+            isDrawing = false;
+            if (roiCanvas && roiCtx) {
+                roiCtx.clearRect(0, 0, roiCanvas.width, roiCanvas.height);
+            }
+            currentROICameraId = null;
+            
+            // Clear ROI list
+            const roiList = document.getElementById('roiList');
+            if (roiList) {
+                roiList.innerHTML = '<p class="text-muted text-center">No regions defined</p>';
+            }
+            break;
+    }
+}
+
+// Form validation functions
+function initializeFormValidation() {
+    // Add Camera Form validation
+    const addForm = document.getElementById('addCameraForm');
+    addForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (validateCameraForm(addForm)) {
+            submitCameraForm(addForm, 'add');
+        }
+    });
+    
+    // Real-time validation for RTSP URL
+    const rtspInputs = document.querySelectorAll('input[name="rtsp_url"]');
+    rtspInputs.forEach(input => {
+        input.addEventListener('blur', validateRTSPUrl);
+        input.addEventListener('input', function(e) {
+            clearFieldError(e);
+            updateSubmitButtonState();
+        });
+    });
+    
+    // Real-time validation for camera name
+    const nameInputs = document.querySelectorAll('input[name="name"]');
+    nameInputs.forEach(input => {
+        input.addEventListener('blur', validateCameraName);
+        input.addEventListener('input', function(e) {
+            clearFieldError(e);
+            updateSubmitButtonState();
+        });
+    });
+}
+
+function validateCameraForm(form) {
+    let isValid = true;
+    
+    // Clear previous errors
+    form.querySelectorAll('.is-invalid').forEach(field => {
+        field.classList.remove('is-invalid');
+    });
+    form.querySelectorAll('.invalid-feedback').forEach(feedback => {
+        feedback.remove();
+    });
+    
+    // Validate camera name
+    const nameField = form.querySelector('input[name="name"]');
+    if (!nameField.value.trim()) {
+        showFieldError(nameField, 'Camera name is required');
+        isValid = false;
+    } else if (nameField.value.trim().length < 3) {
+        showFieldError(nameField, 'Camera name must be at least 3 characters');
+        isValid = false;
+    }
+    
+    // Validate URL based on camera source
+    const urlField = form.querySelector('input[name="rtsp_url"]');
+    const sourceField = form.querySelector('select[name="camera_source"]');
+    const selectedSource = sourceField ? sourceField.value : 'rtsp';
+    
+    if (!urlField.value.trim()) {
+        showFieldError(urlField, 'This field is required');
+        isValid = false;
+    } else if (!isValidSourceUrl(urlField.value, selectedSource)) {
+        const errorMessage = getSourceValidationMessage(selectedSource);
+        showFieldError(urlField, errorMessage);
+        isValid = false;
+    }
+    
+    return isValid;
+}
+
+function validateRTSPUrl(e) {
+    const field = e.target;
+    const form = field.closest('form');
+    const sourceField = form.querySelector('select[name="camera_source"]');
+    const selectedSource = sourceField ? sourceField.value : 'rtsp';
+    
+    if (field.value && !isValidSourceUrl(field.value, selectedSource)) {
+        const errorMessage = getSourceValidationMessage(selectedSource);
+        showFieldError(field, errorMessage);
+    }
+}
+
+function validateCameraName(e) {
+    const field = e.target;
+    if (field.value && field.value.trim().length < 3 || field.value.includes(' ')) {
+        showFieldError(field, 'Camera name must be at least 3 characters, and without spaces');
+    }
+}
+
+function isValidSourceUrl(value, sourceType) {
+    switch(sourceType) {
+        case 'local':
+            // Should be a number (device index)
+            return /^\d+$/.test(value.trim());
+        case 'rtsp':
+            try {
+                const urlObj = new URL(value);
+                return urlObj.protocol === 'rtsp:' && urlObj.hostname;
+            } catch {
+                return false;
+            }
+        case 'http':
+            try {
+                const urlObj = new URL(value);
+                return (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') && urlObj.hostname;
+            } catch {
+                return false;
+            }
+        case 'video_file':
+            // Should be a valid file path
+            return value.trim().length > 0 && (
+                value.includes('/') || // Unix path
+                /^[A-Za-z]:\\/.test(value) || // Windows path
+                value.includes('\\') // Windows path
+            );
+        case 'youtube':
+            // Should be a valid YouTube URL
+            return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(value);
+        default:
+            return true; // Allow any value for unknown types
+    }
+}
+
+function getSourceValidationMessage(sourceType) {
+    switch(sourceType) {
+        case 'local':
+            return 'Please enter a valid camera device index (e.g., 0, 1, 2)';
+        case 'rtsp':
+            return 'Please enter a valid RTSP URL (rtsp://...)';
+        case 'http':
+            return 'Please enter a valid HTTP URL (http:// or https://...)';
+        case 'video_file':
+            return 'Please enter a valid file path (e.g., /path/to/video.mp4)';
+        case 'youtube':
+            return 'Please enter a valid YouTube URL (https://www.youtube.com/...)';
+        default:
+            return 'Please enter a valid value';
+    }
+}
+
+// Keep the old function for backward compatibility
+function isValidRTSPUrl(url) {
+    return isValidSourceUrl(url, 'rtsp');
+}
+
+function showFieldError(field, message) {
+    field.classList.add('is-invalid');
+    
+    // Remove existing error message
+    const existingError = field.parentNode.querySelector('.invalid-feedback');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Add new error message
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'invalid-feedback';
+    errorDiv.textContent = message;
+    field.parentNode.appendChild(errorDiv);
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+
+function clearFieldError(e) {
+    const field = e.target;
+    field.classList.remove('is-invalid');
+    const errorDiv = field.parentNode.querySelector('.invalid-feedback');
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+
+function updateSubmitButtonState() {
+    const addCameraModal = document.getElementById('addCameraModal');
+    if (!addCameraModal) return;
+    
+    const submitBtn = document.getElementById('addCameraSubmitBtn');
+    const form = addCameraModal.querySelector('form');
+    
+    if (!submitBtn || !form) return;
+    
+    // Check if there are any validation errors
+    const hasErrors = form.querySelectorAll('.is-invalid').length > 0;
+    
+    // Check if required fields are empty
+    const nameField = form.querySelector('input[name="name"]');
+    const rtspField = form.querySelector('input[name="rtsp_url"]');
+    const hasEmptyRequired = !nameField?.value?.trim() || !rtspField?.value?.trim();
+    
+    // Disable submit button if there are errors or empty required fields
+    submitBtn.disabled = hasErrors || hasEmptyRequired;
+}
+
+function submitCameraForm(form, action) {
+    const submitBtn = action === 'add' ? 
+        document.getElementById('addCameraSubmitBtn') : 
+        document.getElementById('updateCameraSubmitBtn');
+    
+    // Show loading state
+    setButtonLoading(submitBtn, true);
+    
+    const formData = new FormData(form);
+    
+    // Get the correct URL based on action
+    let url;
+    if (action === 'add') {
+        url = '/cameras/add/';
+    } else {
+        const cameraId = form.querySelector('input[name="camera_id"]').value;
+        url = `/cameras/edit/${cameraId}/`;
+    }
+    
+    // Submit form data to backend
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json(); // Expect JSON response from backend
+        } else {
+            throw new Error('Network response was not ok');
+        }
+    })
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            bootstrap.Modal.getInstance(form.closest('.modal')).hide();
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            throw new Error(data.message || 'Server returned error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification(`Failed to ${action} camera. Please try again.`, 'error');
+    })
+    .finally(() => {
+        setButtonLoading(submitBtn, false);
+    });
+}
+
+function setButtonLoading(button, loading) {
+    const textSpan = button.querySelector('.btn-text');
+    const spinnerSpan = button.querySelector('.btn-spinner');
+    
+    if (loading) {
+        textSpan.classList.add('d-none');
+        spinnerSpan.classList.remove('d-none');
+        button.disabled = true;
+    } else {
+        textSpan.classList.remove('d-none');
+        spinnerSpan.classList.add('d-none');
+        button.disabled = false;
+    }
+}
+
+function showNotification(message, type) {
+    const alertMap = {
+        'success': { class: 'alert-success', icon: 'bi-check-circle-fill' },
+        'error': { class: 'alert-danger', icon: 'bi-x-circle-fill' },
+        'info': { class: 'alert-info', icon: 'bi-info-circle-fill' },
+        'warning': { class: 'alert-warning', icon: 'bi-exclamation-triangle-fill' }
+    };
+    
+    const config = alertMap[type] || alertMap['info'];
+    const alertClass = config.class;
+    const iconClass = config.icon;
+    
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi ${iconClass} fs-5 me-3"></i>
+            <div>
+                <strong>${message}</strong>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (document.body.contains(notification)) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+
+
+function configureROI(cameraId) {
+    
+    try {
+        currentROICameraId = cameraId;
+        
+        // Check if Bootstrap is available
+        if (typeof bootstrap === 'undefined') {
+            console.error('Bootstrap is not loaded');
+            alert('Bootstrap is not loaded. Please refresh the page.');
+            return;
+        }
+        
+        // Check if modal element exists
+        const modalElement = document.getElementById('roiModal');
+        if (!modalElement) {
+            console.error('ROI Modal element not found');
+            alert('ROI Modal not found. Please refresh the page.');
+            return;
+        }
+        
+        // Initialize and show modal
+        const modal = new bootstrap.Modal(modalElement);
+        
+        // Add event listener for when modal is shown
+        const onModalShown = function() {
+            
+            // Small delay to ensure DOM is fully rendered
+            setTimeout(() => {
+                try {
+                    initializeROICanvas();
+                } catch (error) {
+                    console.error('Error initializing ROI Canvas:', error);
+                    alert('Error initializing ROI Canvas. Check browser console for details.');
+                }
+            }, 100);
+            
+            // Remove this event listener after first use
+            modalElement.removeEventListener('shown.bs.modal', onModalShown);
+        };
+        
+        modalElement.addEventListener('shown.bs.modal', onModalShown);
+        
+        // Show the modal
+        modal.show();
+        
+    } catch (error) {
+        console.error('Error in configureROI:', error);
+        alert('Error opening ROI configuration. Check browser console for details.');
+    }
+}
+
+function toggleCamera(cameraId, enable) {
+    const action = enable ? 'enable' : 'disable';
+    
+    // Find the camera row for UI updates
+    const cameraRow = document.querySelector(`tr[data-camera-id="${cameraId}"]`);
+    const statusBadge = cameraRow ? cameraRow.querySelector('.badge') : null;
+    
+    // Show progress notification
+    showNotification(`${enable ? 'Enabling' : 'Disabling'} camera...`, 'info');
+    
+    // Real AJAX call to toggle camera
+    fetch(`/cameras/edit/${cameraId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            action: 'toggle_status',
+            is_active: enable
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update UI immediately
+            if (statusBadge) {
+                if (enable) {
+                    statusBadge.className = 'badge bg-success';
+                    statusBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>Active';
+                } else {
+                    statusBadge.className = 'badge bg-secondary';
+                    statusBadge.innerHTML = '<i class="bi bi-pause-fill me-1"></i>Inactive';
+                }
+            }
+            
+            showNotification(`Camera ${enable ? 'enabled' : 'disabled'} successfully!`, 'success');
+            
+            // Update the action buttons in the dropdown
+            setTimeout(() => {
+                const dropdown = cameraRow.querySelector('.dropdown-menu');
+                if (dropdown) {
+                    const enableBtn = dropdown.querySelector('.enable-camera');
+                    const disableBtn = dropdown.querySelector('.disable-camera');
+                    
+                    if (enable && enableBtn) {
+                        enableBtn.parentElement.innerHTML = `
+                            <a class="dropdown-item disable-camera" href="#" data-camera-id="${cameraId}">
+                                <i class="bi bi-pause me-2"></i>Disable
+                            </a>
+                        `;
+                    } else if (!enable && disableBtn) {
+                        disableBtn.parentElement.innerHTML = `
+                            <a class="dropdown-item enable-camera" href="#" data-camera-id="${cameraId}">
+                                <i class="bi bi-play me-2"></i>Enable
+                            </a>
+                        `;
+                    }
+                    
+                    // Re-attach event listeners
+                    attachCameraActionListeners();
+                }
+            }, 100);
+        } else {
+            showNotification(`Failed to ${action} camera: ${data.message || 'Unknown error'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Toggle camera error:', error);
+        showNotification(`Failed to ${action} camera. Please try again.`, 'error');
+    });
+}
+
+function deleteCamera(cameraId) {
+    // Find camera name for confirmation
+    const cameraRow = document.querySelector(`tr[data-camera-id="${cameraId}"]`);
+    const cameraName = cameraRow ? cameraRow.querySelector('strong').textContent : `Camera ${cameraId}`;
+    
+    // Enhanced confirmation dialog
+    if (!confirm(`Are you sure you want to delete "${cameraName}"?\n\nThis action will:\n• Remove the camera configuration\n• Delete all recorded footage\n• Stop all active streams\n\nThis cannot be undone.`)) {
+        return;
+    }
+    
+    // Show progress notification
+    showNotification('Deleting camera...', 'info');
+    
+    // Add visual feedback to the row
+    if (cameraRow) {
+        cameraRow.style.opacity = '0.5';
+        cameraRow.style.pointerEvents = 'none';
+    }
+    
+    // Real AJAX call to delete camera
+    fetch(`/cameras/delete/${cameraId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`"${cameraName}" deleted successfully!`, 'success');
+            
+            // Remove the row with animation
+            if (cameraRow) {
+                cameraRow.style.transition = 'all 0.5s ease-out';
+                cameraRow.style.transform = 'translateX(-100%)';
+                cameraRow.style.opacity = '0';
+                
+                setTimeout(() => {
+                    cameraRow.remove();
+                    
+                    // Check if table is empty and show empty state
+                    const tbody = document.querySelector('tbody');
+                    if (tbody && tbody.children.length === 0) {
+                        tbody.innerHTML = `
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="bi bi-camera-plus fs-1"></i>
+                                    <h5 class="mt-3">No Cameras Configured</h5>
+                                    <p>Get started by adding your first camera to the surveillance system.</p>
+                                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCameraModal">
+                                        <i class="bi bi-plus-circle me-2"></i>Add First Camera
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                }, 500);
+            }
+        } else {
+            showNotification(`Failed to delete camera: ${data.message || 'Unknown error'}`, 'error');
+            
+            // Restore row state
+            if (cameraRow) {
+                cameraRow.style.opacity = '1';
+                cameraRow.style.pointerEvents = 'auto';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Delete camera error:', error);
+        showNotification('Failed to delete camera. Please try again.', 'error');
+        
+        // Restore row state
+        if (cameraRow) {
+            cameraRow.style.opacity = '1';
+            cameraRow.style.pointerEvents = 'auto';
+        }
+    });
+}
+
+// Helper function to re-attach event listeners after dynamic content changes
+function attachCameraActionListeners() {
+    // Use event delegation instead of cloning elements to preserve Bootstrap functionality
+    
+    // Remove existing direct listeners and use event delegation
+    document.querySelectorAll('.enable-camera').forEach(btn => {
+        // Check if listener already attached to prevent duplicates
+        if (!btn.hasAttribute('data-listener-attached')) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const cameraId = this.dataset.cameraId;
+                toggleCamera(cameraId, true);
+            });
+            btn.setAttribute('data-listener-attached', 'true');
+        }
+    });
+
+    document.querySelectorAll('.disable-camera').forEach(btn => {
+        if (!btn.hasAttribute('data-listener-attached')) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const cameraId = this.dataset.cameraId;
+                toggleCamera(cameraId, false);
+            });
+            btn.setAttribute('data-listener-attached', 'true');
+        }
+    });
+
+    document.querySelectorAll('.delete-camera').forEach(btn => {
+        if (!btn.hasAttribute('data-listener-attached')) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const cameraId = this.dataset.cameraId;
+                deleteCamera(cameraId);
+            });
+            btn.setAttribute('data-listener-attached', 'true');
+        }
+    });
+}
+
+function loadCameraDetails(cameraId) {
+    // Store current camera ID for edit button
+    currentCameraId = cameraId;
+    
+    document.getElementById('viewCameraContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading camera details...</p>
+        </div>
+    `;
+    
+    // Fetch real camera data from backend with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    fetch(`/api/camera/${cameraId}/details/`, {
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        signal: controller.signal
+    })
+    .then(response => {
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`Failed to load camera details: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(camera => {
+        document.getElementById('viewCameraContent').innerHTML = `
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">Camera Stream</h6>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="loadCameraDetails(${camera.id})">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-success" onclick="toggleFullscreen()">
+                                    <i class="bi bi-fullscreen"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body text-center p-0" id="cameraStreamContainer_${camera.id}">
+                            <div class="position-relative">
+                                <!-- HLS Video Player -->
+                                <video id="hlsPlayer_${camera.id}" 
+                                       class="w-100" 
+                                       style="height: 400px; background: #000;" 
+                                       controls 
+                                       autoplay 
+                                       muted
+                                       playsinline>
+                                    <source src="/detection/object_detection/${camera.id}/" type="application/x-mpegURL">
+                                    Your browser does not support HLS video streaming.
+                                </video>
+                                
+                                <!-- Loading Overlay -->
+                                <div id="streamLoading_${camera.id}" class="position-absolute top-0 start-0 w-100 h-100 bg-dark d-flex align-items-center justify-content-center" style="height: 400px;">
+                                    <div class="text-center text-light">
+                                        <div class="spinner-border text-primary mb-3" role="status">
+                                            <span class="visually-hidden">Loading stream...</span>
+                                        </div>
+                                        <h6 class="text-light">Connecting to ${camera.name || 'Camera'}</h6>
+                                        <p class="text-muted small">Initializing HLS stream...</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Error Overlay -->
+                                <div id="streamError_${camera.id}" class="position-absolute top-0 start-0 w-100 h-100 bg-dark d-none align-items-center justify-content-center" style="height: 400px;">
+                                    <div class="text-center text-light">
+                                        <i class="bi bi-exclamation-triangle fs-1 text-warning mb-3"></i>
+                                        <h6 class="text-light">Stream Unavailable</h6>
+                                        <p class="text-muted small">Unable to connect to camera stream</p>
+                                        <button class="btn btn-outline-primary btn-sm" onclick="retryStream(${camera.id})">
+                                            <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Stream Info Overlay -->
+                                <div class="position-absolute top-0 end-0 m-2">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-light bg-dark bg-opacity-75" data-bs-toggle="dropdown">
+                                            <i class="bi bi-info-circle"></i>
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-end">
+                                            <div class="px-3 py-2">
+                                                <small class="text-muted">
+                                                    <div><strong>Resolution:</strong> <span id="streamResolution_${camera.id}">Loading...</span></div>
+                                                    <div><strong>FPS:</strong> <span id="streamFPS_${camera.id}">Loading...</span></div>
+                                                    <div><strong>Status:</strong> <span id="streamStatus_${camera.id}" class="badge bg-secondary">Connecting</span></div>
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Camera Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr><td><strong>ID:</strong></td><td>${camera.id}</td></tr>
+                                <tr><td><strong>Name:</strong></td><td>${camera.name || 'Unnamed Camera'}</td></tr>
+                                <tr><td><strong>Status:</strong></td><td>
+                                    ${camera.is_active ? 
+                                        '<span class="badge bg-success"><i class="bi bi-circle-fill me-1"></i>Active</span>' : 
+                                        '<span class="badge bg-secondary"><i class="bi bi-pause-fill me-1"></i>Inactive</span>'
+                                    }
+                                </td></tr>
+                                <tr><td><strong>RTSP URL:</strong></td><td style="word-wrap: break-word; word-break: break-all; max-width: 200px; overflow-wrap: break-word;">
+                                    <code class="small">${camera.rtsp_url || 'Not configured'}</code></td></tr>
+                                <tr><td><strong>Authentication:</strong></td><td>
+                                    ${camera.username ? 
+                                        '<span class="badge bg-info"><i class="bi bi-shield-check me-1"></i>Protected</span>' : 
+                                        '<span class="badge bg-secondary"><i class="bi bi-unlock me-1"></i>Open</span>'
+                                    }
+                                </td></tr>
+                                <tr><td><strong>ROI:</strong></td><td>
+                                    ${camera.roi_coordinates ? 
+                                        '<span class="badge bg-primary"><i class="bi bi-crop me-1"></i>Configured</span>' : 
+                                        '<span class="badge bg-light text-dark"><i class="bi bi-square me-1"></i>Full Frame</span>'
+                                    }
+                                </td></tr>
+                                <tr><td><strong>Created:</strong></td><td>${new Date(camera.created_at).toLocaleDateString()}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    ${camera.recent_detections && camera.recent_detections.length > 0 ? `
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Recent Detections</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="timeline">
+                                ${camera.recent_detections.map(detection => `
+                                    <div class="timeline-item">
+                                        <small class="text-muted">${new Date(detection.timestamp).toLocaleString()}</small>
+                                        <p class="mb-1">${detection.description || 'Detection recorded'}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        // Initialize HLS stream after content is loaded
+        setTimeout(() => {
+            initializeHLSStream(camera.id);
+        }, 500);
+    })
+    .catch(error => {
+        console.error('Error loading camera details:', error);
+        clearTimeout(timeoutId);
+        
+        let errorMessage = 'Unable to retrieve camera information.';
+        let errorIcon = 'bi-exclamation-triangle';
+        
+        if (error.name === 'AbortError') {
+            errorMessage = 'Request timed out. Please check your connection and try again.';
+            errorIcon = 'bi-clock';
+        } else if (error.message.includes('404')) {
+            errorMessage = 'Camera not found. It may have been deleted.';
+            errorIcon = 'bi-camera-video-off';
+        } else if (error.message.includes('500')) {
+            errorMessage = 'Server error. Please try again later.';
+            errorIcon = 'bi-server';
+        } else if (!navigator.onLine) {
+            errorMessage = 'No internet connection. Please check your network.';
+            errorIcon = 'bi-wifi-off';
+        }
+        
+        document.getElementById('viewCameraContent').innerHTML = `
+            <div class="alert alert-danger text-center">
+                <i class="bi ${errorIcon} fs-1"></i>
+                <h5 class="mt-3">Failed to Load Camera Details</h5>
+                <p>${errorMessage}</p>
+                <button class="btn btn-outline-primary" onclick="loadCameraDetails(${cameraId})">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                </button>
+            </div>
+        `;
+    });
+}
+
+function loadEditCameraForm(cameraId) {
+    
+    // Fetch camera data from the API endpoint
+    fetch(`/api/camera/${cameraId}/details/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Failed to load camera configuration');
+        }
+        return response.json();
+    })
+    .then(camera => {
+        document.getElementById('editCameraContent').innerHTML = `
+            <div class="row g-3">
+                <input type="hidden" name="camera_id" value="${cameraId}">
+                <div class="col-md-6">
+                    <label class="form-label">Camera Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="name" value="${camera.name || ''}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" name="is_active">
+                        <option value="true" ${camera.is_active ? 'selected' : ''}>Active</option>
+                        <option value="false" ${!camera.is_active ? 'selected' : ''}>Inactive</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">RTSP URL <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="rtsp_url" value="${camera.rtsp_url || ''}" required>
+                    <div class="form-text">Current RTSP stream URL for this camera</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" name="username" value="${camera.username || ''}" placeholder="Camera username (optional)">
+                    <div class="form-text">Leave blank if camera doesn't require authentication</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" name="password" placeholder="Leave blank to keep current password">
+                    <div class="form-text">Enter new password or leave blank to keep existing</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">AI Module</label>
+                    <select class="form-select" name="aimodule">
+                        <option value="">No AI Module</option>
+                        ${camera.available_aimodules ? camera.available_aimodules.map(module => 
+                            `<option value="${module.id}" ${camera.aimodule_id == module.id ? 'selected' : ''}>${module.name}</option>`
+                        ).join('') : ''}
+                    </select>
+                    <div class="form-text">Select an AI module for this camera</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">AI Module Status</label>
+                    <select class="form-select" name="is_aimodule_active">
+                        <option value="false" ${!camera.is_aimodule_active ? 'selected' : ''}>Inactive</option>
+                        <option value="true" ${camera.is_aimodule_active ? 'selected' : ''}>Active</option>
+                    </select>
+                    <div class="form-text">Enable or disable AI module for this camera</div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Camera Thumbnail</label>
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <input type="file" class="form-control" name="thumbnail" accept="image/*" id="editThumbnailInput">
+                            <div class="form-text">Upload a thumbnail image for ROI configuration</div>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-primary" id="editCaptureThumbnailBtn">
+                                <i class="bi bi-camera me-1"></i>Capture from Live Stream
+                            </button>
+                        </div>
+                    </div>
+                    <div id="editThumbnailPreview"></div>
+                </div>
+                <div class="col-12">
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <h6>Camera Information</h6>
+                            <table class="table table-sm">
+                                <tr><td>Camera ID:</td><td><code>${camera.id}</code></td></tr>
+                                <tr><td>Created:</td><td>${new Date(camera.created_at).toLocaleString()}</td></tr>
+                                <tr><td>ROI Configured:</td><td>
+                                    ${camera.roi_coordinates ? 
+                                        '<span class="badge bg-primary">Yes</span>' : 
+                                        '<span class="badge bg-secondary">No</span>'
+                                    }
+                                </td></tr>
+                                <tr><td>AI Module:</td><td>
+                                    ${camera.aimodule_name ? 
+                                        `<span class="badge bg-primary">${camera.aimodule_name}</span>` +
+                                        (camera.is_aimodule_active ? 
+                                            '<span class="badge bg-success ms-1">Active</span>' : 
+                                            '<span class="badge bg-secondary ms-1">Inactive</span>') :
+                                        '<span class="badge bg-light text-dark">None</span>'
+                                    }
+                                </td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Show existing thumbnail if available
+        if (camera.thumbnail) {
+            document.getElementById('editThumbnailPreview').innerHTML = `
+                <div class="mt-2">
+                    <small class="text-muted">Current thumbnail:</small>
+                    <div class="mt-1">
+                        <img src="${camera.thumbnail}" alt="Camera thumbnail" class="img-thumbnail" style="max-width: 200px; max-height: 150px;">
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Initialize form validation for the edit form
+        initializeEditFormValidation();
+    })
+    .catch(error => {
+        console.error('Error loading camera configuration:', error);
+        document.getElementById('editCameraContent').innerHTML = `
+            <div class="alert alert-danger text-center">
+                <i class="bi bi-exclamation-triangle fs-1"></i>
+                <h5 class="mt-3">Failed to Load Camera Configuration</h5>
+                <p>Unable to retrieve camera configuration from the database.</p>
+                <button class="btn btn-outline-primary" onclick="loadEditCameraForm(${cameraId})">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                </button>
+            </div>
+        `;
+    });
+}
+
+function updateCamera() {
+    
+    const form = document.getElementById('editCameraForm');
+    if (!form) {
+        console.error('Edit camera form not found');
+        showNotification('Form not found. Please try again.', 'error');
+        return;
+    }
+    
+    const cameraIdField = form.querySelector('input[name="camera_id"]');
+    if (!cameraIdField) {
+        console.error('Camera ID field not found');
+        showNotification('Camera ID not found. Please reload and try again.', 'error');
+        return;
+    }
+    
+    const cameraId = cameraIdField.value;
+    
+    // Validate form
+    if (!validateCameraForm(form)) {
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = document.getElementById('updateCameraSubmitBtn');
+    setButtonLoading(submitBtn, true);
+    
+    // Prepare form data
+    const formData = new FormData(form);
+    
+    // Submit to Django camera edit endpoint
+    fetch(`/cameras/edit/${cameraId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Failed to update camera');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message || 'Camera updated successfully!', 'success');
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editCameraModal'));
+            if (modal) {
+                modal.hide();
+            }
+            
+            // Reload page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showNotification(data.message || 'Failed to update camera. Please check your input.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating camera:', error);
+        showNotification('Failed to update camera. Please try again.', 'error');
+    })
+    .finally(() => {
+        setButtonLoading(submitBtn, false);
+    });
+}
+
+function initializeEditFormValidation() {
+    const editForm = document.getElementById('editCameraForm');
+    
+    // Real-time validation for RTSP URL
+    const rtspInput = editForm.querySelector('input[name="rtsp_url"]');
+    if (rtspInput) {
+        rtspInput.addEventListener('blur', validateRTSPUrl);
+        rtspInput.addEventListener('input', clearFieldError);
+    }
+    
+    // Real-time validation for camera name
+    const nameInput = editForm.querySelector('input[name="name"]');
+    if (nameInput) {
+        nameInput.addEventListener('blur', validateCameraName);
+        nameInput.addEventListener('input', clearFieldError);
+    }
+}
+
+// Enhanced ROI Canvas functions with thumbnail support
+
+function initializeROICanvas() {
+    
+    try {
+        roiCanvas = document.getElementById('roiCanvas');
+        if (!roiCanvas) {
+            throw new Error('ROI Canvas element not found');
+        }
+        
+        roiCtx = roiCanvas.getContext('2d');
+        if (!roiCtx) {
+            throw new Error('Could not get 2D context from canvas');
+        }
+        
+        
+        // Initialize event listeners
+        roiCanvas.addEventListener('click', handleCanvasClick);
+        roiCanvas.addEventListener('dblclick', handleCanvasDoubleClick);
+        roiCanvas.addEventListener('mousemove', handleCanvasMouseMove);
+        
+        // Clear and setup canvas
+        clearCanvas();
+        updateROICounter();
+        
+        // Load thumbnail if available
+        try {
+            loadThumbnail();
+        } catch (error) {
+            console.warn('Error loading thumbnail:', error);
+        }
+        
+        // Load current ROI if exists
+        try {
+            loadCurrentROI();
+        } catch (error) {
+            console.warn('Error loading current ROI:', error);
+        }
+        
+        
+    } catch (error) {
+        console.error('Error initializing ROI Canvas:', error);
+        throw error;
+    }
+}
+
+// Thumbnail and canvas management functions
+function resizeCanvasToImage() {
+    if (!thumbnailImage || !roiCanvas) return;
+    
+    // Set canvas dimensions to match image dimensions
+    roiCanvas.width = thumbnailImage.width;
+    roiCanvas.height = thumbnailImage.height;
+    
+    // Update canvas display size to fit container while maintaining aspect ratio
+    const maxWidth = 800;
+    const maxHeight = 600;
+    const aspectRatio = thumbnailImage.width / thumbnailImage.height;
+    
+    let displayWidth = thumbnailImage.width;
+    let displayHeight = thumbnailImage.height;
+    
+    if (displayWidth > maxWidth) {
+        displayWidth = maxWidth;
+        displayHeight = displayWidth / aspectRatio;
+    }
+    
+    if (displayHeight > maxHeight) {
+        displayHeight = maxHeight;
+        displayWidth = displayHeight * aspectRatio;
+    }
+    
+    roiCanvas.style.width = displayWidth + 'px';
+    roiCanvas.style.height = displayHeight + 'px';
+}
+
+function clearCanvas() {
+    roiCtx.clearRect(0, 0, roiCanvas.width, roiCanvas.height);
+    
+    if (thumbnailImage) {
+        // Draw thumbnail as background
+        roiCtx.drawImage(thumbnailImage, 0, 0, roiCanvas.width, roiCanvas.height);
+    } else {
+        // Draw placeholder
+        roiCtx.fillStyle = '#f8f9fa';
+        roiCtx.fillRect(0, 0, roiCanvas.width, roiCanvas.height);
+        
+        roiCtx.strokeStyle = '#dee2e6';
+        roiCtx.lineWidth = 2;
+        roiCtx.setLineDash([10, 5]);
+        roiCtx.strokeRect(10, 10, roiCanvas.width - 20, roiCanvas.height - 20);
+        roiCtx.setLineDash([]);
+        
+        roiCtx.fillStyle = '#6c757d';
+        roiCtx.font = '24px Arial';
+        roiCtx.textAlign = 'center';
+        roiCtx.fillText('Camera Preview', roiCanvas.width/2, roiCanvas.height/2 - 10);
+        roiCtx.font = '16px Arial';
+        roiCtx.fillText('Click "Load Thumbnail" or upload an image', roiCanvas.width/2, roiCanvas.height/2 + 20);
+    }
+}
+
+
+
+function redrawCanvas() {
+    // Redraw camera feed
+    drawCameraFeed(currentROICameraId);
+    
+    // Redraw all ROI rectangles
+    roiRects.forEach((roi, index) => {
+        // Draw rectangle
+        roiCtx.strokeStyle = '#00ff00';
+        roiCtx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+        roiCtx.lineWidth = 2;
+        roiCtx.fillRect(roi.x, roi.y, roi.width, roi.height);
+        roiCtx.strokeRect(roi.x, roi.y, roi.width, roi.height);
+        
+        // Draw label
+        roiCtx.fillStyle = '#00ff00';
+        roiCtx.font = '12px Arial';
+        roiCtx.fillText(`ROI ${roi.id}`, roi.x + 5, roi.y + 15);
+        
+        // Draw resize handle
+        roiCtx.fillStyle = '#ff0000';
+        roiCtx.fillRect(roi.x + roi.width - 5, roi.y + roi.height - 5, 10, 10);
+    });
+    
+    // Update ROI list
+    updateROIList();
+}
+
+function updateROIList() {
+    const roiListContainer = document.getElementById('roiList');
+    
+    if (roiRects.length === 0) {
+        roiListContainer.innerHTML = '<p class="text-muted text-center">No regions defined</p>';
+        return;
+    }
+    
+    const listHTML = roiRects.map(roi => `
+        <div class="roi-item border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>ROI ${roi.id}</strong><br>
+                    <small class="text-muted">
+                        ${roi.width} × ${roi.height}px<br>
+                        (${roi.x}, ${roi.y})
+                    </small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteROI(${roi.id - 1})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    roiListContainer.innerHTML = listHTML;
+}
+
+function deleteROI(index) {
+    if (index >= 0 && index < roiRects.length) {
+        const deletedROI = roiRects.splice(index, 1)[0];
+        
+        // Renumber remaining ROIs
+        roiRects.forEach((r, i) => {
+            r.id = i + 1;
+        });
+        
+        redrawCanvas();
+        showNotification(`ROI ${deletedROI.id} removed`, 'info');
+    }
+}
+
+function undoLastROI() {
+    if (roiRects.length > 0) {
+        const removedROI = roiRects.pop();
+        redrawCanvas();
+        showNotification(`ROI ${removedROI.id} removed`, 'info');
+    } else {
+        showNotification('No ROI regions to remove', 'warning');
+    }
+}
+
+
+function drawCameraFeed(cameraId) {
+    // Function to draw camera feed on canvas
+    try {
+        if (!roiCanvas || !roiCtx) {
+            console.error('ROI Canvas not initialized');
+            return;
+        }
+        
+        // Clear the canvas
+        roiCtx.clearRect(0, 0, roiCanvas.width, roiCanvas.height);
+        
+        // Draw a placeholder background
+        roiCtx.fillStyle = '#f8f9fa';
+        roiCtx.fillRect(0, 0, roiCanvas.width, roiCanvas.height);
+        
+        // Draw border
+        roiCtx.strokeStyle = '#dee2e6';
+        roiCtx.lineWidth = 2;
+        roiCtx.strokeRect(0, 0, roiCanvas.width, roiCanvas.height);
+        
+        // Add text indicating camera feed
+        roiCtx.fillStyle = '#6c757d';
+        roiCtx.font = '16px Arial';
+        roiCtx.textAlign = 'center';
+        roiCtx.fillText(`Camera ${cameraId} Feed`, roiCanvas.width / 2, roiCanvas.height / 2 - 10);
+        roiCtx.fillText('(Load thumbnail or capture image)', roiCanvas.width / 2, roiCanvas.height / 2 + 10);
+        
+            
+    } catch (error) {
+        console.error('Error drawing camera feed:', error);
+    }
+}
+
+// Note: This old saveROI function is replaced by the enhanced version below
+
+// Helper function to get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+let currentCameraId = null;
+let streamTimer = null;
+let eventListeners = [];
+
+// Event cleanup utilities
+function addManagedEventListener(element, event, handler, options = {}) {
+    element.addEventListener(event, handler, options);
+    eventListeners.push({ element, event, handler, options });
+}
+
+function cleanupEventListeners() {
+    eventListeners.forEach(({ element, event, handler }) => {
+        element.removeEventListener(event, handler);
+    });
+    eventListeners = [];
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    cleanupEventListeners();
+    if (streamTimer) {
+        clearInterval(streamTimer);
+        streamTimer = null;
+    }
+});
+
+// Stream helper functions
+function startStreamTimer() {
+    if (streamTimer) clearInterval(streamTimer);
+    
+    let seconds = 0;
+    streamTimer = setInterval(() => {
+        seconds++;
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        
+        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        const timeElement = document.getElementById('streamTime');
+        if (timeElement) {
+            timeElement.textContent = timeString;
+        }
+    }, 1000);
+}
+
+function refreshStream(cameraId) {
+    const refreshBtn = document.getElementById('refreshStreamBtn');
+    
+    // Show loading state
+    const originalHtml = refreshBtn.innerHTML;
+    refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    refreshBtn.disabled = true;
+    
+    // Real stream refresh (for now just reset button since streams are handled by HLS.js)
+    setTimeout(() => {
+        refreshBtn.innerHTML = originalHtml;
+        refreshBtn.disabled = false;
+        
+        // Restart timer
+        startStreamTimer();
+        showNotification('Stream refreshed', 'info');
+    }, 1000);
+}
+
+function toggleFullscreen() {
+    const streamContainer = document.querySelector('.bg-dark');
+    
+    if (!document.fullscreenElement) {
+        streamContainer.requestFullscreen().then(() => {
+            streamContainer.style.height = '100vh';
+            document.getElementById('fullscreenBtn').innerHTML = '<i class="bi bi-fullscreen-exit"></i>';
+        }).catch(err => {
+            console.log('Error attempting to enable fullscreen:', err);
+        });
+    } else {
+        document.exitFullscreen().then(() => {
+            streamContainer.style.height = '400px';
+            document.getElementById('fullscreenBtn').innerHTML = '<i class="bi bi-fullscreen"></i>';
+        });
+    }
+}
+
+// HLS Streaming Functions
+function initializeHLSStream(cameraId) {
+    const video = document.getElementById(`hlsPlayer_${cameraId}`);
+    const loadingOverlay = document.getElementById(`streamLoading_${cameraId}`);
+    const errorOverlay = document.getElementById(`streamError_${cameraId}`);
+    const statusSpan = document.getElementById(`streamStatus_${cameraId}`);
+    const resolutionSpan = document.getElementById(`streamResolution_${cameraId}`);
+    const fpsSpan = document.getElementById(`streamFPS_${cameraId}`);
+
+    if (!video) return;
+
+    // Show loading overlay initially
+    loadingOverlay.classList.remove('d-none');
+    loadingOverlay.classList.add('d-flex');
+    errorOverlay.classList.add('d-none');
+    
+    // Update status
+    if (statusSpan) {
+        statusSpan.className = 'badge bg-warning';
+        statusSpan.textContent = 'Connecting';
+    }
+
+    // Set up video event listeners
+    video.addEventListener('loadstart', function() {
+        console.log('HLS stream loading started for camera', cameraId);
+        if (statusSpan) {
+            statusSpan.className = 'badge bg-info';
+            statusSpan.textContent = 'Loading';
+        }
+    });
+
+    video.addEventListener('loadedmetadata', function() {
+        console.log('HLS metadata loaded for camera', cameraId);
+        
+        // Hide loading overlay
+        loadingOverlay.classList.add('d-none');
+        loadingOverlay.classList.remove('d-flex');
+        
+        // Update stream info
+        if (resolutionSpan) {
+            resolutionSpan.textContent = `${video.videoWidth}x${video.videoHeight}`;
+        }
+        if (statusSpan) {
+            statusSpan.className = 'badge bg-success';
+            statusSpan.textContent = 'Connected';
+        }
+    });
+
+    video.addEventListener('canplay', function() {
+        console.log('HLS stream ready to play for camera', cameraId);
+        
+        // Try to get FPS info (approximate)
+        if (fpsSpan) {
+            fpsSpan.textContent = '~25 FPS';
+        }
+    });
+
+    video.addEventListener('error', function(e) {
+        console.error('HLS stream error for camera', cameraId, e);
+        handleHLSError(cameraId, e);
+    });
+
+    video.addEventListener('stalled', function() {
+        console.warn('HLS stream stalled for camera', cameraId);
+        if (statusSpan) {
+            statusSpan.className = 'badge bg-warning';
+            statusSpan.textContent = 'Buffering';
+        }
+    });
+
+    video.addEventListener('waiting', function() {
+        if (statusSpan) {
+            statusSpan.className = 'badge bg-warning';
+            statusSpan.textContent = 'Buffering';
+        }
+    });
+
+    video.addEventListener('playing', function() {
+        if (statusSpan) {
+            statusSpan.className = 'badge bg-success';
+            statusSpan.textContent = 'Live';
+        }
+    });
+
+    // Start playing the stream
+    setTimeout(() => {
+        video.play().catch(error => {
+            console.error('Failed to start HLS playback for camera', cameraId, error);
+            handleHLSError(cameraId, error);
+        });
+    }, 1000);
+}
+
+function handleHLSError(cameraId, error) {
+    const loadingOverlay = document.getElementById(`streamLoading_${cameraId}`);
+    const errorOverlay = document.getElementById(`streamError_${cameraId}`);
+    const statusSpan = document.getElementById(`streamStatus_${cameraId}`);
+
+    // Hide loading, show error
+    if (loadingOverlay) {
+        loadingOverlay.classList.add('d-none');
+        loadingOverlay.classList.remove('d-flex');
+    }
+    if (errorOverlay) {
+        errorOverlay.classList.remove('d-none');
+        errorOverlay.classList.add('d-flex');
+    }
+    
+    // Update status
+    if (statusSpan) {
+        statusSpan.className = 'badge bg-danger';
+        statusSpan.textContent = 'Error';
+    }
+
+    console.error('HLS Error for camera', cameraId, error);
+}
+
+function retryStream(cameraId) {
+    console.log('Retrying HLS stream for camera', cameraId);
+    
+    const video = document.getElementById(`hlsPlayer_${cameraId}`);
+    const errorOverlay = document.getElementById(`streamError_${cameraId}`);
+    const loadingOverlay = document.getElementById(`streamLoading_${cameraId}`);
+    
+    // Hide error overlay
+    if (errorOverlay) {
+        errorOverlay.classList.add('d-none');
+        errorOverlay.classList.remove('d-flex');
+    }
+    
+    // Show loading overlay
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('d-none');
+        loadingOverlay.classList.add('d-flex');
+    }
+    
+    // Reload the video source
+    if (video) {
+        video.load();
+        setTimeout(() => {
+            video.play().catch(error => {
+                console.error('Retry failed for camera', cameraId, error);
+                handleHLSError(cameraId, error);
+            });
+        }, 1000);
+    }
+}
+
+function updateStreamFullscreen(cameraId) {
+    const video = document.getElementById(`hlsPlayer_${cameraId}`);
+    if (!video) return;
+
+    if (document.fullscreenElement) {
+        // Entering fullscreen
+        video.style.height = '100vh';
+        video.style.width = '100vw';
+        video.style.objectFit = 'contain';
+    } else {
+        // Exiting fullscreen
+        video.style.height = '400px';
+        video.style.width = '100%';
+        video.style.objectFit = 'cover';
+    }
+}
+
+// Enhanced test connection function
+function testCameraConnection(cameraId) {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-info alert-dismissible fade show position-fixed';
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+            <div>
+                <strong>Testing Connection</strong><br>
+                <small>Camera ${cameraId} - Please wait...</small>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Real connection test
+    fetch(`/cameras/edit/${cameraId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(camera => {
+        // Test connection using camera data
+        return fetch('/cameras/test-connection/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify({
+                rtsp_url: camera.rtsp_url,
+                username: camera.username || '',
+                password: camera.password || ''
+            })
+        });
+    })
+    .then(response => response.json())
+    .then(data => {
+        const success = data.success;
+        
+        notification.className = `alert ${success ? 'alert-success' : 'alert-danger'} alert-dismissible fade show position-fixed`;
+        notification.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="bi ${success ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} fs-5 me-3"></i>
+                <div>
+                    <strong>${success ? 'Connection Successful' : 'Connection Failed'}</strong><br>
+                    <small>Camera ${cameraId} - ${data.message || (success ? 'Stream is accessible' : 'Unable to reach camera')}</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                notification.remove();
+            }
+        }, 5000);
+    })
+    .catch(error => {
+        console.error('Connection test error:', error);
+        
+        notification.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+        notification.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="bi bi-x-circle-fill fs-5 me-3"></i>
+                <div>
+                    <strong>Connection Test Error</strong><br>
+                    <small>Camera ${cameraId} - Unable to test connection</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                notification.remove();
+            }
+        }, 5000);
+    });
+}
+
+// Missing Enhanced ROI and Thumbnail Functions
+
+// Thumbnail handling functions
+async function loadThumbnail() {
+    try {
+        // Try to load existing thumbnail from current camera context
+        const currentCamera = await getCurrentCamera();
+        if (currentCamera && currentCamera.thumbnail) {
+            const img = new Image();
+            img.onload = function() {
+                thumbnailImage = img;
+                resizeCanvasToImage();
+                clearCanvas();
+                redrawROI();
+            };
+            img.src = currentCamera.thumbnail;
+            return;
+        }
+    } catch (e) {
+        console.warn('Could not load current camera thumbnail:', e);
+    }
+    
+    // Check if file input has a file
+    const fileInput = document.getElementById('thumbnailInput');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                thumbnailImage = img;
+                resizeCanvasToImage();
+                clearCanvas();
+                redrawROI();
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleThumbnailUpload() {
+    const fileInput = document.getElementById('thumbnailInput');
+    if (fileInput.files && fileInput.files[0]) {
+        loadThumbnail();
+    }
+}
+
+async function captureThumbnail() {
+    const btn = document.getElementById('captureThumbnailBtn');
+    const originalText = btn.innerHTML;
+    
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Capturing...';
+    btn.disabled = true;
+    
+    try {
+        // Get current camera for HLS URL
+        const currentCamera = await getCurrentCamera();
+        if (!currentCamera) {
+            resetCaptureButton(btn, originalText, 'No camera selected');
+            return;
+        }
+    
+    // Create a hidden video element to capture from HLS stream
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.style.display = 'none';
+    document.body.appendChild(video);
+    
+    // Generate HLS URL for the camera
+    const hlsUrl = `http://127.0.0.1:8888/${currentCamera.name}/index.m3u8`;
+    
+    // Check if HLS.js is supported
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            video.play().then(() => {
+                setTimeout(() => {
+                    captureFrame(video, btn, originalText);
+                    hls.destroy();
+                    document.body.removeChild(video);
+                }, 1000);
+            }).catch(error => {
+                console.error('Video play failed:', error);
+                resetCaptureButton(btn, originalText, 'Capture failed');
+                hls.destroy();
+                document.body.removeChild(video);
+            });
+        });
+        
+        hls.on(Hls.Events.ERROR, function(event, data) {
+            console.error('HLS error:', data);
+            resetCaptureButton(btn, originalText, 'Stream unavailable');
+            hls.destroy();
+            document.body.removeChild(video);
+        });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        video.src = hlsUrl;
+        video.addEventListener('loadedmetadata', function() {
+            setTimeout(() => {
+                captureFrame(video, btn, originalText);
+                document.body.removeChild(video);
+            }, 1000);
+        });
+        
+        video.addEventListener('error', function() {
+            resetCaptureButton(btn, originalText, 'Stream error');
+            document.body.removeChild(video);
+        });
+    } else {
+        resetCaptureButton(btn, originalText, 'HLS not supported');
+        document.body.removeChild(video);
+    }
+    } catch (error) {
+        console.error('Error capturing thumbnail:', error);
+        resetCaptureButton(btn, originalText, 'Capture error');
+    }
+}
+
+function captureFrame(video, btn, originalText) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert to blob and create file input
+    canvas.toBlob(function(blob) {
+        const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        document.getElementById('thumbnailInput').files = dt.files;
+        
+        // Load into ROI canvas
+        const img = new Image();
+        img.onload = function() {
+            thumbnailImage = img;
+            resizeCanvasToImage();
+            clearCanvas();
+            redrawROI();
+        };
+        img.src = URL.createObjectURL(blob);
+        
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Captured!';
+        btn.className = 'btn btn-success';
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.className = 'btn btn-outline-primary';
+            btn.disabled = false;
+        }, 2000);
+    }, 'image/jpeg', 0.8);
+}
+
+function resetCaptureButton(btn, originalText, errorMsg) {
+    btn.innerHTML = `<i class="bi bi-x-circle me-1"></i>${errorMsg}`;
+    btn.className = 'btn btn-danger';
+    
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.className = 'btn btn-outline-primary';
+        btn.disabled = false;
+    }, 3000);
+}
+
+// ROI Drawing Functions
+function handleCanvasClick(e) {
+    const rect = roiCanvas.getBoundingClientRect();
+    const scaleX = roiCanvas.width / rect.width;
+    const scaleY = roiCanvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    if (drawMode === 'polygon') {
+        currentPolygon.push({x: x, y: y});
+        redrawROI();
+        drawCurrentPolygon();
+    } else if (drawMode === 'rectangle') {
+        if (!isDrawing) {
+            isDrawing = true;
+            currentPolygon = [{x: x, y: y}];
+        } else {
+            currentPolygon.push({x: x, y: y});
+            completeRectangle();
+            isDrawing = false;
+        }
+    }
+}
+
+function handleCanvasDoubleClick(e) {
+    if (drawMode === 'polygon' && currentPolygon.length >= 3) {
+        roiData.push({
+            type: 'polygon',
+            points: [...currentPolygon]
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function handleCanvasMouseMove(e) {
+    const rect = roiCanvas.getBoundingClientRect();
+    const scaleX = roiCanvas.width / rect.width;
+    const scaleY = roiCanvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    if (drawMode === 'rectangle' && isDrawing && currentPolygon.length === 1) {
+        redrawROI();
+        drawCurrentRectangle(currentPolygon[0].x, currentPolygon[0].y, x, y);
+    } else if (drawMode === 'polygon' && currentPolygon.length > 0) {
+        redrawROI();
+        drawCurrentPolygon();
+        
+        // Draw preview line to cursor
+        roiCtx.strokeStyle = '#007bff';
+        roiCtx.lineWidth = 2;
+        roiCtx.setLineDash([3, 3]);
+        roiCtx.beginPath();
+        roiCtx.moveTo(currentPolygon[currentPolygon.length - 1].x, currentPolygon[currentPolygon.length - 1].y);
+        roiCtx.lineTo(x, y);
+        roiCtx.stroke();
+        roiCtx.setLineDash([]);
+    }
+}
+
+function completeRectangle() {
+    if (currentPolygon.length === 2) {
+        const start = currentPolygon[0];
+        const end = currentPolygon[1];
+        
+        roiData.push({
+            type: 'rectangle',
+            x: Math.min(start.x, end.x),
+            y: Math.min(start.y, end.y),
+            width: Math.abs(end.x - start.x),
+            height: Math.abs(end.y - start.y)
+        });
+        currentPolygon = [];
+        redrawROI();
+        updateROICounter();
+    }
+}
+
+function drawCurrentPolygon() {
+    if (currentPolygon.length === 0) return;
+    
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 3;
+    roiCtx.setLineDash([8, 4]);
+    
+    roiCtx.beginPath();
+    roiCtx.moveTo(currentPolygon[0].x, currentPolygon[0].y);
+    for (let i = 1; i < currentPolygon.length; i++) {
+        roiCtx.lineTo(currentPolygon[i].x, currentPolygon[i].y);
+    }
+    roiCtx.stroke();
+    roiCtx.setLineDash([]);
+    
+    // Draw points
+    roiCtx.fillStyle = '#007bff';
+    currentPolygon.forEach(point => {
+        roiCtx.beginPath();
+        roiCtx.arc(point.x, point.y, 6, 0, 2 * Math.PI);
+        roiCtx.fill();
+    });
+}
+
+function drawCurrentRectangle(x1, y1, x2, y2) {
+    roiCtx.strokeStyle = '#007bff';
+    roiCtx.lineWidth = 2;
+    roiCtx.setLineDash([5, 5]);
+    roiCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    roiCtx.setLineDash([]);
+}
+
+function redrawROI() {
+    clearCanvas();
+    
+    // Draw saved ROI regions
+    roiData.forEach((roi, index) => {
+        if (roi.type === 'polygon') {
+            drawPolygon(roi.points, index);
+        } else if (roi.type === 'rectangle') {
+            drawRectangle(roi, index);
+        }
+    });
+}
+
+function drawPolygon(points, index) {
+    roiCtx.strokeStyle = '#28a745';
+    roiCtx.fillStyle = 'rgba(40, 167, 69, 0.2)';
+    roiCtx.lineWidth = 3;
+    
+    roiCtx.beginPath();
+    roiCtx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        roiCtx.lineTo(points[i].x, points[i].y);
+    }
+    roiCtx.closePath();
+    roiCtx.fill();
+    roiCtx.stroke();
+    
+    // Add label
+    roiCtx.fillStyle = '#28a745';
+    roiCtx.font = '12px Arial';
+    roiCtx.fillText(`ROI ${index + 1}`, points[0].x + 5, points[0].y - 5);
+}
+
+function drawRectangle(roi, index) {
+    roiCtx.strokeStyle = '#28a745';
+    roiCtx.fillStyle = 'rgba(40, 167, 69, 0.2)';
+    roiCtx.lineWidth = 2;
+    
+    roiCtx.fillRect(roi.x, roi.y, roi.width, roi.height);
+    roiCtx.strokeRect(roi.x, roi.y, roi.width, roi.height);
+    
+    // Add label
+    roiCtx.fillStyle = '#28a745';
+    roiCtx.font = '12px Arial';
+    roiCtx.fillText(`ROI ${index + 1}`, roi.x + 5, roi.y - 5);
+}
+
+function updateCanvasCursor() {
+    if (roiCanvas) {
+        roiCanvas.style.cursor = 'crosshair';
+    }
+}
+
+function updateROICounter() {
+    const counter = document.getElementById('roiCounter');
+    if (counter) {
+        counter.textContent = `ROI Count: ${roiData.length}`;
+    }
+}
+
+function getCurrentCamera() {
+    // Get camera info from the current ROI context
+    if (currentROICameraId) {
+        // Make API call to get current camera data
+        return new Promise((resolve) => {
+            fetch(`/cameras/edit/${currentROICameraId}/`, {
+                method: 'GET',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => resolve(data))
+            .catch(() => resolve({
+                id: currentROICameraId,
+                name: `camera_${currentROICameraId}`,
+                thumbnail: null
+            }));
+        });
+    }
+    return Promise.resolve(null);
+}
+
+// ROI Management Functions - Enhanced versions
+function clearROI() {
+    roiData = [];
+    currentPolygon = [];
+    isDrawing = false;
+    redrawROI();
+    updateROICounter();
+}
+
+function resetROI() {
+    clearROI();
+}
+
+function undoLastROI() {
+    if (roiData.length > 0) {
+        roiData.pop();
+        redrawROI();
+        updateROICounter();
+    } else if (currentPolygon.length > 0) {
+        currentPolygon = [];
+        isDrawing = false;
+        redrawROI();
+    }
+}
+
+function loadCurrentROI() {
+    if (!currentROICameraId) {
+        showNotification('No camera selected for ROI loading', 'warning');
+        return;
+    }
+
+    // Fetch current ROI from backend
+    fetch(`/cameras/edit/${currentROICameraId}/`, {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.roi_coordinates) {
+            try {
+                const coords = JSON.parse(data.roi_coordinates);
+                
+                // Convert backend format to frontend format if needed
+                if (Array.isArray(coords) && coords.length > 0) {
+                    // Check if it's old format (array of coordinate pairs)
+                    if (Array.isArray(coords[0]) && typeof coords[0][0] === 'number') {
+                        // Convert old format to new format
+                        roiData = [{
+                            type: 'polygon',
+                            points: coords.map(coord => ({x: coord[0], y: coord[1]}))
+                        }];
+                    } else {
+                        // Already in new format or empty
+                        roiData = coords;
+                    }
+                } else {
+                    roiData = [];
+                }
+                
+                redrawROI();
+                updateROICounter();
+                showNotification('Current ROI loaded successfully', 'success');
+            } catch (e) {
+                console.error('Error parsing ROI data:', e);
+                showNotification('Error loading ROI data', 'error');
+            }
+        } else {
+            showNotification('No ROI configuration found for this camera', 'info');
+        }
+    })
+    .catch(error => {
+        console.error('Error loading current ROI:', error);
+        showNotification('Error loading current ROI', 'error');
+    });
+}
+
+function saveROI() {
+    if (roiData.length === 0) {
+        alert('No ROI regions defined. Please:\n1. Load a thumbnail image first (Load Thumbnail, Upload Image, or Capture Thumbnail)\n2. Draw at least one ROI region on the image\n3. Then save');
+        return;
+    }
+    
+    
+    if (!currentROICameraId) {
+        alert('No camera selected for ROI configuration');
+        return;
+    }
+    
+    // Send ROI data to backend
+    fetch(`/cameras/edit/${currentROICameraId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            action: 'save_roi',
+            roi_data: JSON.stringify(roiData)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('roiModal'));
+            modal.hide();
+            
+            setTimeout(() => {
+                showNotification('ROI configuration saved successfully!', 'success');
+                // Reload page to show updated ROI status
+                setTimeout(() => window.location.reload(), 1000);
+            }, 500);
+        } else {
+            showNotification('Error saving ROI: ' + (data.message || 'Unknown error'), 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error saving ROI:', error);
+        showNotification('Error saving ROI configuration. Please try again.', 'error');
+    });
+}
+
+// Function to update URL field based on camera source selection
+function updateUrlField() {
+    const sourceSelect = document.getElementById('cameraSourceSelect');
+    const urlLabel = document.getElementById('urlLabel');
+    const urlInput = document.getElementById('urlInput');
+    const urlHelpText = document.getElementById('urlHelpText');
+    const usernameField = document.querySelector('input[name="username"]');
+    const passwordField = document.querySelector('input[name="password"]');
+    const usernameContainer = usernameField ? usernameField.closest('.col-md-6') : null;
+    const passwordContainer = passwordField ? passwordField.closest('.col-md-6') : null;
+    
+    if (!sourceSelect || !urlLabel || !urlInput || !urlHelpText) return;
+    
+    const selectedSource = sourceSelect.value;
+    
+    switch(selectedSource) {
+        case 'local':
+            urlLabel.innerHTML = 'Camera Device Index <span class="text-danger">*</span>';
+            urlInput.placeholder = '0';
+            urlInput.value = '0';
+            urlHelpText.textContent = 'Enter camera device index (e.g., 0 for first camera, 1 for second)';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        case 'rtsp':
+            urlLabel.innerHTML = 'RTSP URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'rtsp://192.168.1.100:554/stream';
+            urlHelpText.textContent = 'Enter the complete RTSP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+            break;
+        case 'http':
+            urlLabel.innerHTML = 'HTTP Stream URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'http://192.168.1.100:8080/video';
+            urlHelpText.textContent = 'Enter the HTTP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+            break;
+        case 'video_file':
+            urlLabel.innerHTML = 'Video File Path <span class="text-danger">*</span>';
+            urlInput.placeholder = '/path/to/video.mp4';
+            urlHelpText.textContent = 'Enter the full path to the video file';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        case 'youtube':
+            urlLabel.innerHTML = 'YouTube URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'https://www.youtube.com/watch?v=VIDEO_ID';
+            urlHelpText.textContent = 'Enter the YouTube video URL';
+            if (usernameContainer) usernameContainer.style.display = 'none';
+            if (passwordContainer) passwordContainer.style.display = 'none';
+            break;
+        default:
+            urlLabel.innerHTML = 'RTSP URL <span class="text-danger">*</span>';
+            urlInput.placeholder = 'rtsp://192.168.1.100:554/stream';
+            urlHelpText.textContent = 'Enter the complete RTSP stream URL for this camera';
+            if (usernameContainer) usernameContainer.style.display = 'block';
+            if (passwordContainer) passwordContainer.style.display = 'block';
+    }
+    
+    // Clear the input value when changing source type (except for local which sets default)
+    if (selectedSource !== 'local') {
+        urlInput.value = '';
+    }
+    
+    // Clear any existing validation errors when source changes
+    urlInput.classList.remove('is-invalid');
+    const existingError = urlInput.parentNode.querySelector('.invalid-feedback');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Update submit button state
+    updateSubmitButtonState();
+}
+</script>
+{% endblock %}

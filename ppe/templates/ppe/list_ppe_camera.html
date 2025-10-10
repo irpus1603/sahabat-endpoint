@@ -1,0 +1,366 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}PPE Detection - SOCA Edge{% endblock %}
+{% block page_title %}PPE Detection{% endblock %}
+{% block page_subtitle %}Personal Protective Equipment Monitoring{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Summary Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-camera-video fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ total_cameras }}</h4>
+                        <small class="opacity-90">Total Cameras</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #2E8B57 0%, #228B22 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-shield-check fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ ppe_enabled_cameras }}</h4>
+                        <small class="opacity-90">PPE Enabled</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #4A90E2 0%, #2171B5 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-circle-fill fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ online_cameras }}</h4>
+                        <small class="opacity-90">Online</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm" style="background: linear-gradient(135deg, #F39C12 0%, #E67E22 100%);">
+                    <div class="card-body text-center text-white">
+                        <i class="bi bi-exclamation-triangle fs-1 opacity-75"></i>
+                        <h4 class="mt-2 fw-bold">{{ total_violations }}</h4>
+                        <small class="opacity-90">PPE Violations</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PPE Statistics Chart -->
+        <div class="card shadow-lg border-0 mb-4">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #34495E 0%, #2C3E50 100%); border-bottom: 3px solid #E67E22;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-bar-chart me-2 text-warning"></i>
+                        PPE Compliance Overview
+                    </h5>
+                    <span class="badge bg-light text-dark shadow-sm px-3 py-2">
+                        <i class="bi bi-graph-up me-1 text-warning"></i>
+                        Real-time Data
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <canvas id="ppeComplianceChart" style="height: 300px;"></canvas>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column justify-content-center h-100">
+                            <div class="mb-3">
+                                <h6 class="text-muted mb-2">Overall Compliance</h6>
+                                <div class="d-flex align-items-center">
+                                    <div class="progress me-3" style="width: 120px; height: 12px;">
+                                        <div class="progress-bar bg-success" style="width: 85%"></div>
+                                    </div>
+                                    <span class="h5 mb-0 text-success">85%</span>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <h6 class="text-muted mb-2">Total Cameras</h6>
+                                <span class="h4 mb-0 text-primary">{{ total_cameras }}</span>
+                            </div>
+                            <div class="mb-3">
+                                <h6 class="text-muted mb-2">Active PPE Detection</h6>
+                                <span class="h4 mb-0 text-success">{{ ppe_enabled_cameras }}</span>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-2">Total Violations</h6>
+                                <span class="h4 mb-0 text-danger">{{ total_violations }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PPE Camera Table -->
+        <div class="card shadow-lg border-0">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%); border-bottom: 3px solid #3498DB;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-shield-check me-2 text-info"></i>
+                        PPE Detection Management
+                    </h5>
+                    <span class="badge bg-light text-dark shadow-sm px-3 py-2">
+                        <i class="bi bi-camera-video me-1 text-primary"></i>
+                        {{ cameras|length }} Camera{{ cameras|length|pluralize }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if cameras %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead style="background: linear-gradient(135deg, #34495E 0%, #2C3E50 100%); color: white;">
+                            <tr>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-camera-video me-2 text-info"></i>
+                                    Camera
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-geo-alt me-2 text-warning"></i>
+                                    Location
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-shield-check me-2 text-success"></i>
+                                    PPE Detection
+                                </th>
+                                <th class="border-0 fw-semibold">
+                                    <i class="bi bi-bar-chart me-2 text-primary"></i>
+                                    Compliance Rate
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-power me-2 text-light"></i>
+                                    Status
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-exclamation-triangle me-2 text-warning"></i>
+                                    Violations
+                                </th>
+                                <th class="border-0 text-center fw-semibold">
+                                    <i class="bi bi-tools me-2 text-muted"></i>
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for camera in cameras %}
+                            <tr class="align-middle">
+                                <td class="py-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center me-3" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 40px; height: 40px;">
+                                            <i class="bi bi-shield-check text-white"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-0 fw-bold text-dark">{{ camera.name|default:"Unnamed Camera" }}</h6>
+                                            <small class="text-muted">ID: {{ camera.id }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-geo-alt text-primary me-2"></i>
+                                        <span class="text-muted">{{ camera.location|default:"Not Set" }}</span>
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    {% if camera.is_active %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #2E8B57 0%, #228B22 100%); color: white;">
+                                            <i class="bi bi-shield-check me-1"></i>
+                                            PPE Active
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-secondary border px-3 py-2 fs-6 shadow-sm">
+                                            <i class="bi bi-shield-slash me-1"></i>
+                                            PPE Inactive
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3">
+                                    {% if camera.is_active %}
+                                        {% with compliance=camera.compliance_rate|default:85 %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress me-2" style="width: 80px; height: 8px;">
+                                                {% if compliance >= 80 %}
+                                                    <div class="progress-bar bg-success" style="width: {{ compliance }}%"></div>
+                                                {% elif compliance >= 60 %}
+                                                    <div class="progress-bar bg-warning" style="width: {{ compliance }}%"></div>
+                                                {% else %}
+                                                    <div class="progress-bar bg-danger" style="width: {{ compliance }}%"></div>
+                                                {% endif %}
+                                            </div>
+                                            <small class="fw-bold 
+                                                {% if compliance >= 80 %}text-success
+                                                {% elif compliance >= 60 %}text-warning
+                                                {% else %}text-danger{% endif %}">{{ compliance }}%</small>
+                                        </div>
+                                        {% endwith %}
+                                    {% else %}
+                                        <small class="text-muted fst-italic">N/A</small>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    {% if camera.is_active %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #27AE60 0%, #2ECC71 100%); color: white;">
+                                            <i class="bi bi-circle-fill me-1"></i>
+                                            Online
+                                        </span>
+                                    {% else %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%); color: white;">
+                                            <i class="bi bi-x-circle-fill me-1"></i>
+                                            Offline
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    {% with violations=camera.violations_count|default:0 %}
+                                    {% if violations > 0 %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm violation-alert" style="background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%); color: white;">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>
+                                            {{ violations }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge px-3 py-2 fs-6 shadow-sm" style="background: linear-gradient(135deg, #27AE60 0%, #2ECC71 100%); color: white;">
+                                            <i class="bi bi-check-circle me-1"></i>
+                                            0
+                                        </span>
+                                    {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td class="py-3 text-center">
+                                    <div class="btn-group" role="group">
+                                        <a href="{% url 'camera_edit' camera.id %}" class="btn btn-outline-secondary btn-sm" title="Configure Camera" data-bs-toggle="tooltip">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </a>
+                                        {% if camera.is_active %}
+                                        <a href="{% url 'ppe_detection_page' camera.id %}" 
+                                           class="btn btn-outline-primary btn-sm" title="PPE Detection Page" data-bs-toggle="tooltip">
+                                            <i class="bi bi-shield-check"></i>
+                                        </a>
+                                        <a href="{% url 'ppe_detection_page' camera.id %}" 
+                                           class="btn btn-outline-success btn-sm" title="Stream PPE Detection" data-bs-toggle="tooltip">
+                                            <i class="bi bi-arrows-fullscreen"></i>
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <div class="mb-4">
+                        <i class="bi bi-shield-check display-1 text-muted"></i>
+                    </div>
+                    <h4 class="text-muted mb-3">No PPE Detection Cameras Found</h4>
+                    <p class="text-muted mb-4">Get started by adding your first PPE detection camera to the system.</p>
+                    <a href="{% url 'camera_settings' %}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Add Your First PPE Camera
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.badge {
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-primary), #007bff) !important;
+}
+
+.bg-success.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-success), #20c997) !important;
+}
+
+.bg-warning.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-warning), #fd7e14) !important;
+}
+
+.bg-danger.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-danger), #dc3545) !important;
+}
+
+.bg-secondary.bg-gradient {
+    background: linear-gradient(45deg, var(--bs-secondary), #6c757d) !important;
+}
+
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.btn-group .btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-group .btn:hover {
+    transform: scale(1.1);
+}
+
+.violation-alert {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.progress {
+    background-color: #e9ecef;
+    border-radius: 4px;
+}
+
+.progress-bar {
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ApexCharts - Modern, Popular Chart Library -->
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+<script>
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
+    
+});
+
+
+</script>
+{% endblock %}

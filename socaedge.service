@@ -1,0 +1,21 @@
+[Unit]
+Description=SocaEdge Gunicorn Application Server
+After=network.target
+
+[Service]
+Type=notify
+User=supriyadi
+Group=staff
+RuntimeDirectory=gunicorn
+WorkingDirectory=/Users/supriyadi/Projects/Django/Waskitoedge/soca/socaedge
+Environment=PATH=/Users/supriyadi/Projects/Django/Waskitoedge/myvenv/bin
+ExecStart=/Users/supriyadi/Projects/Django/Waskitoedge/myvenv/bin/gunicorn --config gunicorn.conf.py socaedge.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

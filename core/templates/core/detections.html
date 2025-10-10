@@ -1,0 +1,505 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Detections - SOCA Edge{% endblock %}
+
+{% block page_title %}Security Detections{% endblock %}
+{% block page_subtitle %}Monitor threat detection rules and events{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Detection Filters -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <select class="form-select" id="ruleTypeFilter">
+                            <option value="">All Types</option>
+                            <option value="network">Network</option>
+                            <option value="endpoint">Endpoint</option>
+                            <option value="file">File</option>
+                            <option value="process">Process</option>
+                            <option value="behavioral">Behavioral</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="severityFilter">
+                            <option value="">All Severities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" id="statusFilter">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="disabled">Disabled</option>
+                            <option value="testing">Testing</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" id="searchFilter" placeholder="Search detection rules...">
+                    </div>
+                    <div class="col-md-2">
+                        <div class="btn-group w-100">
+                            <button class="btn btn-primary" id="refreshDetections">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newDetectionModal">
+                                <i class="bi bi-plus"></i> New
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detection Statistics -->
+    <div class="col-12 mb-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        <i class="bi bi-shield-check text-success fs-1"></i>
+                        <h5 class="card-title mt-2">Active Rules</h5>
+                        <h3 class="text-success">{{ active_rules|default:0 }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning">
+                    <div class="card-body text-center">
+                        <i class="bi bi-exclamation-triangle text-warning fs-1"></i>
+                        <h5 class="card-title mt-2">Triggered Today</h5>
+                        <h3 class="text-warning">{{ triggered_today|default:0 }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        <i class="bi bi-clock text-info fs-1"></i>
+                        <h5 class="card-title mt-2">In Testing</h5>
+                        <h3 class="text-info">{{ testing_rules|default:0 }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-secondary">
+                    <div class="card-body text-center">
+                        <i class="bi bi-shield-x text-secondary fs-1"></i>
+                        <h5 class="card-title mt-2">Disabled</h5>
+                        <h3 class="text-secondary">{{ disabled_rules|default:0 }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detection Rules Table -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Detection Rules</h5>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-success" id="enableSelected">
+                        <i class="bi bi-play"></i> Enable
+                    </button>
+                    <button class="btn btn-outline-warning" id="disableSelected">
+                        <i class="bi bi-pause"></i> Disable
+                    </button>
+                    <button class="btn btn-outline-danger" id="deleteSelected">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                                <th>Rule Name</th>
+                                <th>Type</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Triggers</th>
+                                <th>Last Triggered</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detectionsTableBody">
+                            {% for detection in detections %}
+                            <tr data-detection-id="{{ detection.id }}" class="detection-row">
+                                <td><input type="checkbox" class="form-check-input detection-checkbox"></td>
+                                <td>
+                                    <strong>{{ detection.name }}</strong>
+                                    <br><small class="text-muted">{{ detection.description|truncatechars:50 }}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark">{{ detection.rule_type|title }}</span>
+                                </td>
+                                <td>
+                                    {% if detection.severity == 'critical' %}
+                                        <span class="badge bg-danger">Critical</span>
+                                    {% elif detection.severity == 'high' %}
+                                        <span class="badge bg-warning">High</span>
+                                    {% elif detection.severity == 'medium' %}
+                                        <span class="badge bg-info">Medium</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Low</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if detection.status == 'active' %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-circle-fill me-1"></i>Active
+                                        </span>
+                                    {% elif detection.status == 'disabled' %}
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-pause-fill me-1"></i>Disabled
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning">
+                                            <i class="bi bi-clock me-1"></i>Testing
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-primary">{{ detection.trigger_count|default:0 }}</span>
+                                </td>
+                                <td>
+                                    {% if detection.last_triggered %}
+                                        {{ detection.last_triggered|date:"M d, H:i" }}
+                                    {% else %}
+                                        <span class="text-muted">Never</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ detection.created_at|date:"M d, Y" }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#detectionDetailModal" data-detection-id="{{ detection.id }}">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editDetectionModal" data-detection-id="{{ detection.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-success btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                                <i class="bi bi-gear"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                {% if detection.status != 'active' %}
+                                                <li><a class="dropdown-item enable-rule" href="#" data-detection-id="{{ detection.id }}">
+                                                    <i class="bi bi-play me-2"></i>Enable
+                                                </a></li>
+                                                {% endif %}
+                                                {% if detection.status == 'active' %}
+                                                <li><a class="dropdown-item disable-rule" href="#" data-detection-id="{{ detection.id }}">
+                                                    <i class="bi bi-pause me-2"></i>Disable
+                                                </a></li>
+                                                {% endif %}
+                                                <li><a class="dropdown-item test-rule" href="#" data-detection-id="{{ detection.id }}">
+                                                    <i class="bi bi-play-circle me-2"></i>Test Rule
+                                                </a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger delete-rule" href="#" data-detection-id="{{ detection.id }}">
+                                                    <i class="bi bi-trash me-2"></i>Delete
+                                                </a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    <i class="bi bi-shield-plus fs-1"></i>
+                                    <p class="mt-2">No detection rules found</p>
+                                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newDetectionModal">
+                                        Create Your First Detection Rule
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detection Detail Modal -->
+<div class="modal fade" id="detectionDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detection Rule Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detectionDetailContent">
+                <!-- Detection details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="editDetectionBtn">Edit Rule</button>
+                <button type="button" class="btn btn-success" id="testDetectionBtn">Test Rule</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Detection Modal -->
+<div class="modal fade" id="newDetectionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Detection Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newDetectionForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Rule Name</label>
+                            <input type="text" class="form-control" name="name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rule Type</label>
+                            <select class="form-select" name="rule_type" required>
+                                <option value="">Select Type</option>
+                                <option value="network">Network</option>
+                                <option value="endpoint">Endpoint</option>
+                                <option value="file">File</option>
+                                <option value="process">Process</option>
+                                <option value="behavioral">Behavioral</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Severity</label>
+                            <select class="form-select" name="severity" required>
+                                <option value="">Select Severity</option>
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="status">
+                                <option value="testing">Testing</option>
+                                <option value="active">Active</option>
+                                <option value="disabled">Disabled</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" name="description" rows="2" placeholder="Describe what this rule detects..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Detection Logic</label>
+                            <textarea class="form-control" name="logic" rows="8" placeholder="Enter detection rule logic (YARA, Sigma, custom format)..." required></textarea>
+                            <div class="form-text">Define the detection criteria using appropriate rule format</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tags</label>
+                            <input type="text" class="form-control" name="tags" placeholder="malware, apt, lateral-movement">
+                            <div class="form-text">Comma-separated tags</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Author</label>
+                            <input type="text" class="form-control" name="author" value="{{ user.username }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-info" id="validateRuleBtn">Validate</button>
+                    <button type="submit" class="btn btn-primary">Create Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Detection Modal -->
+<div class="modal fade" id="editDetectionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Detection Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editDetectionForm">
+                <div class="modal-body" id="editDetectionContent">
+                    <!-- Edit form will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-info" id="validateEditRuleBtn">Validate</button>
+                    <button type="submit" class="btn btn-primary">Update Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-refresh detections every 60 seconds
+    setInterval(function() {
+        refreshDetections();
+    }, 60000);
+
+    // Filter functionality
+    document.getElementById('ruleTypeFilter').addEventListener('change', filterDetections);
+    document.getElementById('severityFilter').addEventListener('change', filterDetections);
+    document.getElementById('statusFilter').addEventListener('change', filterDetections);
+    document.getElementById('searchFilter').addEventListener('input', filterDetections);
+    document.getElementById('refreshDetections').addEventListener('click', refreshDetections);
+
+    // Select all functionality
+    document.getElementById('selectAll').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.detection-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+    });
+
+    // Bulk actions
+    document.getElementById('enableSelected').addEventListener('click', function() {
+        const selectedDetections = getSelectedDetections();
+        if (selectedDetections.length > 0) {
+            bulkAction('enable', selectedDetections);
+        }
+    });
+
+    document.getElementById('disableSelected').addEventListener('click', function() {
+        const selectedDetections = getSelectedDetections();
+        if (selectedDetections.length > 0) {
+            bulkAction('disable', selectedDetections);
+        }
+    });
+
+    document.getElementById('deleteSelected').addEventListener('click', function() {
+        const selectedDetections = getSelectedDetections();
+        if (selectedDetections.length > 0 && confirm('Are you sure you want to delete the selected detection rules?')) {
+            bulkAction('delete', selectedDetections);
+        }
+    });
+
+    // Individual actions
+    document.querySelectorAll('.enable-rule').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            updateDetectionStatus(this.dataset.detectionId, 'active');
+        });
+    });
+
+    document.querySelectorAll('.disable-rule').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            updateDetectionStatus(this.dataset.detectionId, 'disabled');
+        });
+    });
+
+    document.querySelectorAll('.test-rule').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            testDetectionRule(this.dataset.detectionId);
+        });
+    });
+
+    document.querySelectorAll('.delete-rule').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (confirm('Are you sure you want to delete this detection rule?')) {
+                deleteDetectionRule(this.dataset.detectionId);
+            }
+        });
+    });
+
+    // Form submissions
+    document.getElementById('newDetectionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        createDetectionRule(new FormData(this));
+    });
+
+    document.getElementById('validateRuleBtn').addEventListener('click', function() {
+        const form = document.getElementById('newDetectionForm');
+        validateDetectionRule(new FormData(form));
+    });
+});
+
+function filterDetections() {
+    const ruleType = document.getElementById('ruleTypeFilter').value;
+    const severity = document.getElementById('severityFilter').value;
+    const status = document.getElementById('statusFilter').value;
+    const search = document.getElementById('searchFilter').value.toLowerCase();
+    
+    const rows = document.querySelectorAll('.detection-row');
+    rows.forEach(row => {
+        let show = true;
+        const text = row.textContent.toLowerCase();
+        
+        if (ruleType && !text.includes(ruleType)) show = false;
+        if (severity && !text.includes(severity)) show = false;
+        if (status && !text.includes(status)) show = false;
+        if (search && !text.includes(search)) show = false;
+        
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+function getSelectedDetections() {
+    const selectedCheckboxes = document.querySelectorAll('.detection-checkbox:checked');
+    return Array.from(selectedCheckboxes).map(checkbox => {
+        return checkbox.closest('tr').dataset.detectionId;
+    });
+}
+
+function bulkAction(action, detectionIds) {
+    console.log(`Performing ${action} on detections:`, detectionIds);
+    // Add AJAX call to backend here
+}
+
+function updateDetectionStatus(detectionId, status) {
+    console.log(`Updating detection ${detectionId} to status: ${status}`);
+    // Add AJAX call to backend here
+}
+
+function testDetectionRule(detectionId) {
+    console.log(`Testing detection rule: ${detectionId}`);
+    // Add AJAX call to backend here
+}
+
+function deleteDetectionRule(detectionId) {
+    console.log(`Deleting detection rule: ${detectionId}`);
+    // Add AJAX call to backend here
+}
+
+function createDetectionRule(formData) {
+    console.log('Creating new detection rule:', formData);
+    // Add AJAX call to backend here
+}
+
+function validateDetectionRule(formData) {
+    console.log('Validating detection rule:', formData);
+    // Add AJAX call to backend here
+}
+
+function refreshDetections() {
+    console.log('Refreshing detection rules...');
+    // Add AJAX call to reload detections here
+}
+</script>
+{% endblock %}

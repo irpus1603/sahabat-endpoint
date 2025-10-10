@@ -1,0 +1,438 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}System Configuration - SOCA Edge{% endblock %}
+
+{% block page_title %}System Configuration{% endblock %}
+{% block page_subtitle %}Manage system settings and parameters{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-card {
+        transition: transform 0.2s ease-in-out;
+    }
+    .config-card:hover {
+        transform: translateY(-2px);
+    }
+    .config-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+    }
+    .config-input {
+        border: 1px solid #ced4da;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+    .config-input:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+    .category-header {
+        background: linear-gradient(135deg, #0d6efd 0%, #0056b3 100%);
+        color: white;
+        margin: 0 -1rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        border-radius: 0.5rem;
+    }
+    .save-button {
+        position: sticky;
+        top: 100px;
+        z-index: 1000;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Django Messages -->
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle{% elif message.tags == 'success' %}check-circle{% elif message.tags == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<!-- System Information Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-primary config-card">
+            <div class="card-body text-center">
+                <i class="bi bi-gear text-primary fs-1"></i>
+                <h5 class="card-title mt-2">Configuration Items</h5>
+                <h3 class="text-primary">{{ config_groups|length }}</h3>
+                <small class="text-muted">Categories</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info config-card">
+            <div class="card-body text-center">
+                <i class="bi bi-server text-info fs-1"></i>
+                <h5 class="card-title mt-2">System Status</h5>
+                <h3 class="text-info">Online</h3>
+                <small class="text-muted">All services running</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success config-card">
+            <div class="card-body text-center">
+                <i class="bi bi-clock text-success fs-1"></i>
+                <h5 class="card-title mt-2">Last Updated</h5>
+                <h3 class="text-success">{% now "H:i" %}</h3>
+                <small class="text-muted">{% now "M d, Y" %}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning config-card">
+            <div class="card-body text-center">
+                <i class="bi bi-shield-check text-warning fs-1"></i>
+                <h5 class="card-title mt-2">Security</h5>
+                <h3 class="text-warning">Active</h3>
+                <small class="text-muted">All systems secure</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Form -->
+<form method="post" id="configForm">
+    {% csrf_token %}
+    
+    <!-- Floating Save Button -->
+    <div class="save-button">
+        <div class="d-flex justify-content-end mb-3">
+            <button type="submit" class="btn btn-primary btn-lg shadow">
+                <i class="bi bi-check-circle me-2"></i>
+                Save Configuration
+            </button>
+        </div>
+    </div>
+
+    {% if config_groups %}
+        {% for category, configs in config_groups.items %}
+        <div class="card config-card mb-4 shadow-sm">
+            <div class="card-header category-header">
+                <h4 class="mb-0">
+                    <i class="bi bi-folder me-2"></i>
+                    {{ category|title }} Configuration
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover config-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">
+                                    <i class="bi bi-gear me-2"></i>Setting Key
+                                </th>
+                                <th style="width: 50%;">
+                                    <i class="bi bi-pencil me-2"></i>Value
+                                </th>
+                                <th style="width: 25%;">
+                                    <i class="bi bi-info-circle me-2"></i>Description
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for config in configs %}
+                            <tr>
+                                <td>
+                                    <strong class="text-primary">{{ config.key }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ config.category }}</small>
+                                </td>
+                                <td>
+                                    {% if config.key == 'detection_sensitivity' %}
+                                        <input type="range" 
+                                               class="form-range config-input" 
+                                               name="config_{{ config.key }}" 
+                                               value="{{ config.value }}" 
+                                               min="0.1" 
+                                               max="1.0" 
+                                               step="0.1"
+                                               oninput="updateRangeValue(this)">
+                                        <div class="mt-1">
+                                            <span class="badge bg-secondary" id="range_{{ config.key }}">{{ config.value }}</span>
+                                        </div>
+                                    {% elif config.key|lower|slice:":8" == 'password' or config.key|lower|slice:":3" == 'key' %}
+                                        <input type="password" 
+                                               class="form-control config-input" 
+                                               name="config_{{ config.key }}" 
+                                               value="{{ config.value }}"
+                                               placeholder="Enter {{ config.key|lower }}">
+                                    {% elif config.key|lower|slice:":4" == 'port' or config.key|lower|slice:":7" == 'timeout' %}
+                                        <input type="number" 
+                                               class="form-control config-input" 
+                                               name="config_{{ config.key }}" 
+                                               value="{{ config.value }}"
+                                               placeholder="Enter {{ config.key|lower }}">
+                                    {% elif config.key|lower|slice:":6" == 'enable' or config.key|lower|slice:":6" == 'active' %}
+                                        <select class="form-select config-input" name="config_{{ config.key }}">
+                                            <option value="true" {% if config.value == 'true' %}selected{% endif %}>Enabled</option>
+                                            <option value="false" {% if config.value == 'false' %}selected{% endif %}>Disabled</option>
+                                        </select>
+                                    {% else %}
+                                        <input type="text" 
+                                               class="form-control config-input" 
+                                               name="config_{{ config.key }}" 
+                                               value="{{ config.value }}"
+                                               placeholder="Enter {{ config.key|lower }}">
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <textarea class="form-control form-control-sm config-input" 
+                                              name="description_{{ config.key }}" 
+                                              rows="2" 
+                                              placeholder="Enter description for {{ config.key }}"
+                                              style="font-size: 0.875rem;">{% if config.description %}{{ config.description }}{% else %}Configuration parameter for {{ config.key|lower }}{% endif %}</textarea>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <!-- No Configuration Items -->
+        <div class="card config-card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-gear text-muted" style="font-size: 4rem;"></i>
+                <h4 class="text-muted mt-3">No Configuration Items Found</h4>
+                <p class="text-muted">System configuration will appear here once settings are created.</p>
+                <button type="button" class="btn btn-primary" onclick="addDefaultConfigs()">
+                    <i class="bi bi-plus-circle me-2"></i>Add Default Configuration
+                </button>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Add New Configuration Section -->
+    <div class="card config-card mt-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="bi bi-plus-circle me-2"></i>Add New Configuration
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <input type="text" 
+                           class="form-control" 
+                           id="newConfigKey" 
+                           placeholder="Configuration Key"
+                           pattern="[a-zA-Z0-9_-]+"
+                           title="Only letters, numbers, underscores and hyphens allowed">
+                </div>
+                <div class="col-md-4">
+                    <input type="text" 
+                           class="form-control" 
+                           id="newConfigValue" 
+                           placeholder="Configuration Value">
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="newConfigCategory">
+                        <option value="general">General</option>
+                        <option value="detection">Detection</option>
+                        <option value="notification">Notification</option>
+                        <option value="storage">Storage</option>
+                        <option value="security">Security</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <textarea class="form-control" 
+                              id="newConfigDescription" 
+                              placeholder="Description (optional)"
+                              rows="2"></textarea>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12 text-end">
+                    <button type="button" class="btn btn-success" onclick="addNewConfig()">
+                        <i class="bi bi-plus"></i> Add Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- System Information Modal -->
+<div class="modal fade" id="systemInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-info-circle me-2"></i>System Information
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="fw-bold">System Details</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Version:</strong></td><td>SOCA Edge v1.0</td></tr>
+                            <tr><td><strong>Platform:</strong></td><td>Django {{ django_version|default:"4.x" }}</td></tr>
+                            <tr><td><strong>Python:</strong></td><td>{{ python_version|default:"3.x" }}</td></tr>
+                            <tr><td><strong>Database:</strong></td><td>{{ db_vendor|default:"SQLite" }}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold">Performance</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>CPU Usage:</strong></td><td><span class="badge bg-success">Normal</span></td></tr>
+                            <tr><td><strong>Memory:</strong></td><td><span class="badge bg-success">Normal</span></td></tr>
+                            <tr><td><strong>Storage:</strong></td><td><span class="badge bg-warning">75% Used</span></td></tr>
+                            <tr><td><strong>Network:</strong></td><td><span class="badge bg-success">Connected</span></td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Update range slider display
+    function updateRangeValue(slider) {
+        const valueDisplay = document.getElementById('range_' + slider.name.replace('config_', ''));
+        if (valueDisplay) {
+            valueDisplay.textContent = slider.value;
+        }
+    }
+
+    // Add new configuration dynamically
+    function addNewConfig() {
+        const key = document.getElementById('newConfigKey').value.trim();
+        const value = document.getElementById('newConfigValue').value.trim();
+        const category = document.getElementById('newConfigCategory').value;
+        const description = document.getElementById('newConfigDescription').value.trim();
+
+        if (!key || !value) {
+            alert('Please fill in both key and value fields.');
+            return;
+        }
+
+        // Validate key format
+        if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+            alert('Configuration key can only contain letters, numbers, underscores and hyphens.');
+            return;
+        }
+
+        // Create hidden inputs for the new config
+        const form = document.getElementById('configForm');
+        
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'config_' + key;
+        hiddenInput.value = value;
+        form.appendChild(hiddenInput);
+
+        const categoryInput = document.createElement('input');
+        categoryInput.type = 'hidden';
+        categoryInput.name = 'category_' + key;
+        categoryInput.value = category;
+        form.appendChild(categoryInput);
+
+        if (description) {
+            const descriptionInput = document.createElement('input');
+            descriptionInput.type = 'hidden';
+            descriptionInput.name = 'description_' + key;
+            descriptionInput.value = description;
+            form.appendChild(descriptionInput);
+        }
+
+        // Submit the form
+        form.submit();
+    }
+
+    // Add default configurations
+    function addDefaultConfigs() {
+        const defaults = [
+            { key: 'max_cameras', value: '10', category: 'general', description: 'Maximum number of cameras that can be configured' },
+            { key: 'recording_enabled', value: 'true', category: 'general', description: 'Enable or disable video recording functionality' },
+            { key: 'notification_timeout', value: '60', category: 'notification', description: 'Time interval between notifications (in seconds)' },
+            { key: 'storage_path', value: '/var/soca/storage', category: 'storage', description: 'Directory path for storing video recordings and snapshots' }
+        ];
+
+        const form = document.getElementById('configForm');
+        
+        defaults.forEach(config => {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'config_' + config.key;
+            hiddenInput.value = config.value;
+            form.appendChild(hiddenInput);
+
+            const categoryInput = document.createElement('input');
+            categoryInput.type = 'hidden';
+            categoryInput.name = 'category_' + config.key;
+            categoryInput.value = config.category;
+            form.appendChild(categoryInput);
+
+            if (config.description) {
+                const descriptionInput = document.createElement('input');
+                descriptionInput.type = 'hidden';
+                descriptionInput.name = 'description_' + config.key;
+                descriptionInput.value = config.description;
+                form.appendChild(descriptionInput);
+            }
+        });
+
+        form.submit();
+    }
+
+    // Form validation
+    document.getElementById('configForm').addEventListener('submit', function(e) {
+        const sensitivityInputs = document.querySelectorAll('input[name="config_detection_sensitivity"]');
+        
+        sensitivityInputs.forEach(input => {
+            const value = parseFloat(input.value);
+            if (value < 0.1 || value > 1.0) {
+                e.preventDefault();
+                alert('Detection sensitivity must be between 0.1 and 1.0');
+                input.focus();
+                return false;
+            }
+        });
+    });
+
+    // Initialize range sliders
+    document.addEventListener('DOMContentLoaded', function() {
+        const rangeInputs = document.querySelectorAll('input[type="range"]');
+        rangeInputs.forEach(input => {
+            updateRangeValue(input);
+        });
+    });
+
+    // Auto-save indication
+    let saveTimeout;
+    document.querySelectorAll('.config-input').forEach(input => {
+        input.addEventListener('input', function() {
+            clearTimeout(saveTimeout);
+            const saveButton = document.querySelector('button[type="submit"]');
+            saveButton.innerHTML = '<i class="bi bi-clock me-2"></i>Changes Pending...';
+            saveButton.classList.remove('btn-primary');
+            saveButton.classList.add('btn-warning');
+            
+            saveTimeout = setTimeout(() => {
+                saveButton.innerHTML = '<i class="bi bi-check-circle me-2"></i>Save Configuration';
+                saveButton.classList.remove('btn-warning');
+                saveButton.classList.add('btn-primary');
+            }, 3000);
+        });
+    });
+</script>
+{% endblock %}

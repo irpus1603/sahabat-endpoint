@@ -1,0 +1,13 @@
+django
+django-cors-headers
+opencv-python
+numpy
+Pillow
+ultralytics
+supervision
+inference
+ruamel.yaml
+requests
+python-dotenv
+psycopg2-binary
+mysqlclient
