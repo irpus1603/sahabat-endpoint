@@ -1,7 +1,7 @@
 """
 FastAPI application for Sahabat-9B model endpoint
 """
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
@@ -12,6 +12,7 @@ from typing import Dict, Any
 from config import get_settings
 from logger import setup_logger
 from model_manager import model_manager
+from auth import verify_api_key
 from models import (
     HealthResponse, HealthStatus, ErrorResponse,
     GenerateRequest, GenerateResponse,
@@ -121,7 +122,7 @@ async def health_check():
     response_model=GenerateResponse,
     tags=["Generation"]
 )
-async def generate_text(request: GenerateRequest):
+async def generate_text(request: GenerateRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate text using Sahabat-9B model
 
@@ -165,7 +166,7 @@ async def generate_text(request: GenerateRequest):
     response_model=EmbeddingResponse,
     tags=["RAG"]
 )
-async def generate_embeddings(request: EmbeddingRequest):
+async def generate_embeddings(request: EmbeddingRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate embeddings for texts
 
@@ -198,7 +199,7 @@ async def generate_embeddings(request: EmbeddingRequest):
     response_model=ChunkResponse,
     tags=["RAG"]
 )
-async def chunk_document(request: ChunkRequest):
+async def chunk_document(request: ChunkRequest, api_key: str = Depends(verify_api_key)):
     """
     Chunk text into smaller pieces for RAG
 
@@ -232,7 +233,7 @@ async def chunk_document(request: ChunkRequest):
     response_model=RAGResponse,
     tags=["RAG"]
 )
-async def rag_query(request: RAGRequest):
+async def rag_query(request: RAGRequest, api_key: str = Depends(verify_api_key)):
     """
     Perform RAG (Retrieval-Augmented Generation) query
 
@@ -287,7 +288,7 @@ async def rag_query(request: RAGRequest):
     "/v1/chat/completions",
     tags=["Chat Completions"]
 )
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(request: ChatCompletionRequest, api_key: str = Depends(verify_api_key)):
     """
     OpenAI-compatible chat completions endpoint
 

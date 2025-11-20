@@ -3,6 +3,7 @@ Configuration management for Sahabat-9B API
 """
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -39,6 +40,11 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
+
+    # Authentication
+    ENABLE_API_KEY_AUTH: bool = True
+    API_KEYS: List[str] = []  # List of valid API keys (load from env or .env file)
+    API_KEY_HEADER: str = "X-API-Key"  # Header name for API key
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
