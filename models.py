@@ -2,7 +2,7 @@
 Pydantic models for request/response validation
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any
 from enum import Enum
 
 
@@ -157,10 +157,11 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = Field(0.9, ge=0.0, le=1.0, description="Nucleus sampling")
     top_k: Optional[int] = Field(50, ge=0, description="Top-k sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
-    stream_options: Optional[bool] = Field(True, description="Stream options")
+    stream_options: Optional[Any] = Field(None, description="Stream options (pass-through, e.g. {\"include_usage\": true})")
     repetition_penalty: Optional[float] = Field(1.1, ge=1.0, le=2.0, description="Repetition penalty")
 
     class Config:
+        extra = "ignore"  # silently drop unknown OpenAI fields (stop, frequency_penalty, etc.)
         json_schema_extra = {
             "example": {
                 "model": "Qwen/Qwen3-30B-A3B-GGUF",
