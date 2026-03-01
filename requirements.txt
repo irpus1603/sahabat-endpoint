@@ -1,0 +1,22 @@
+# Core dependencies
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# ML/AI dependencies
+torch
+transformers
+sentence-transformers
+accelerate
+bitsandbytes
+
+# Utilities
+numpy
+python-dotenv
+
+# GGUF backend (required when MODEL_BACKEND=gguf)
+llama-cpp-python
+
+# Optional: For better performance
+nvidia-cuda-runtime-cu12  # Uncomment if using CUDA 12

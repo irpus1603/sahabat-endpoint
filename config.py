@@ -1,0 +1,71 @@
+"""
+Configuration management for Sahabat-9B API
+"""
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+from typing import List
+
+
+class Settings(BaseSettings):
+    """Application settings"""
+
+    # API Settings
+    APP_NAME: str = "Sahabat-9B API"
+    APP_VERSION: str = "1.0.0"
+    API_PREFIX: str = "/api/v1"
+    DEBUG: bool = False
+
+    # Server Settings
+    HOST: str = "0.0.0.0"
+    PORT: int = 9000
+    WORKERS: int = 1
+
+    # Model Settings
+    MODEL_NAME: str = "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct"
+    MODEL_MAX_LENGTH: int = 8192  # Gemma2 supports up to 8k context
+    DEVICE: str = "cuda"  # or "cpu" or "mps" for Mac
+    LOAD_IN_8BIT: bool = False
+    LOAD_IN_4BIT: bool = False
+    HUGGINGFACE_TOKEN: str = ""  # HuggingFace API token for model downloads
+    USE_FLASH_ATTENTION: bool = True  # Enable Flash Attention 2 for faster inference
+    ENABLE_KV_CACHE: bool = True  # Enable KV cache for faster generation
+
+    # GGUF Backend Settings (used when MODEL_BACKEND=gguf)
+    MODEL_BACKEND: str = "transformers"  # Options: transformers, gguf
+    MODEL_FILE: str = "*q4_k_m.gguf"   # GGUF filename pattern (glob), e.g. *Q4_K_M.gguf
+    N_CTX: int = 8192                   # Context window size for GGUF models
+    N_GPU_LAYERS: int = -1              # GPU layers for llama-cpp (-1 = all layers on GPU)
+
+    # Generation Settings
+    DEFAULT_MAX_NEW_TOKENS: int = 2000
+    DEFAULT_TEMPERATURE: float = 0.7
+    DEFAULT_TOP_P: float = 0.9
+    DEFAULT_TOP_K: int = 50
+
+    # RAG Settings
+    EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    CHUNK_SIZE: int = 512
+    CHUNK_OVERLAP: int = 50
+
+    # Authentication
+    ENABLE_API_KEY_AUTH: bool = True
+    API_KEYS: List[str] = []  # List of valid API keys (load from env or .env file)
+    API_KEY_HEADER: str = "X-API-Key"  # Header name for API key
+
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+    MAX_REQUESTS_PER_MINUTE: int = 60
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get cached settings instance"""
+    return Settings()
