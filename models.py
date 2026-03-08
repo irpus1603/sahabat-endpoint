@@ -1,7 +1,7 @@
 """
 Pydantic models for request/response validation
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Any
 from enum import Enum
 from config import get_settings
@@ -136,7 +136,19 @@ class ErrorResponse(BaseModel):
 class ChatMessage(BaseModel):
     """Chat message"""
     role: str = Field(..., description="Role: system, user, or assistant")
-    content: str = Field(..., description="Message content")
+    content: str = Field(..., description="Message content (string or list of content parts)")
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def normalize_content(cls, v: Any) -> str:
+        """Accept OpenAI content parts format: [{"type": "text", "text": "..."}]"""
+        if isinstance(v, list):
+            parts = []
+            for part in v:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    parts.append(part.get("text", ""))
+            return " ".join(parts)
+        return v
 
 
 class ChatCompletionRequest(BaseModel):

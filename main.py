@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from contextlib import asynccontextmanager
 import time
 import json
+import uuid
+from datetime import datetime
 from typing import Dict, Any
 
 from config import get_settings
@@ -288,44 +290,21 @@ async def rag_query(request: RAGRequest, api_key: str = Depends(verify_api_key))
     "/v1/chat/completions",
     tags=["Chat Completions"]
 )
-async def chat_completions(request: Request, api_key: str = Depends(verify_api_key)):
+async def chat_completions(chat_request: ChatCompletionRequest, api_key: str = Depends(verify_api_key)):
     """
     OpenAI-compatible chat completions endpoint
+
+    - **model**: Model name (e.g., "Qwen/Qwen3-30B-A3B-GGUF")
+    - **messages**: List of messages with role (system/user/assistant) and content
+    - **max_tokens**: Maximum tokens to generate
+    - **temperature**: Sampling temperature
+    - **top_p**: Nucleus sampling
+    - **top_k**: Top-k sampling
+    - **stream**: Enable streaming response
     """
-    # DEBUG: log raw request body
-    body = await request.body()
-    logger.info(f"RAW REQUEST BODY: {body.decode()}")
-
-    # Parse manually
     try:
-        data = json.loads(body)
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON PARSE ERROR: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid JSON: {str(e)}"
-        )
-
-    # Validate with Pydantic
-    try:
-        chat_request = ChatCompletionRequest(**data)
-    except Exception as e:
-        logger.error(f"VALIDATION ERROR: {str(e)}")
-        logger.error(f"FIELDS RECEIVED: {list(data.keys())}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Validation error: {str(e)}"
-        )
-
-    try:
-        import uuid
-        from datetime import datetime
-
         # Convert Pydantic messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
-
-        logger.info(f"Stream parameter received: {chat_request.stream}")
-        logger.info(f"Stream type: {type(chat_request.stream)}")
 
         # Handle streaming
         if chat_request.stream:
