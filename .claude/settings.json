@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from config import get_settings; s = get_settings\\(\\); print\\(''MODEL_NAME:'', s.MODEL_NAME\\); print\\(''MODEL_BACKEND:'', s.MODEL_BACKEND\\); print\\(''ENV FILE:'', s.model_config.get\\(''env_file''\\)\\)\")"
+    ]
+  }
+}
