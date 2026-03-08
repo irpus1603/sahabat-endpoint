@@ -102,6 +102,11 @@ class ModelManager:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
+            # Override tokenizer's default model_max_length (often 2048)
+            # so it matches the actual context window configured in .env
+            if self.tokenizer:
+                self.tokenizer.model_max_length = settings.MODEL_MAX_LENGTH
+
             # Load model
             model_kwargs: Dict[str, Any] = {
                 "trust_remote_code": True,
@@ -256,10 +261,10 @@ class ModelManager:
     def generate(
         self,
         prompt: str,
-        max_new_tokens: int = 512,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
-        top_k: int = 50,
+        max_new_tokens: int = settings.DEFAULT_MAX_NEW_TOKENS,
+        temperature: float = settings.DEFAULT_TEMPERATURE,
+        top_p: float = settings.DEFAULT_TOP_P,
+        top_k: int = settings.DEFAULT_TOP_K,
         do_sample: bool = True,
         repetition_penalty: float = 1.1,
     ) -> Dict[str, Any]:
@@ -323,10 +328,10 @@ class ModelManager:
     def chat_completion_stream(
         self,
         messages: list[dict],
-        max_tokens: Optional[int] = 1024,
-        temperature: Optional[float] = 0.7,
-        top_p: Optional[float] = 0.9,
-        top_k: Optional[int] = 50,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
         repetition_penalty: Optional[float] = 1.1,
     ) -> Generator[str, None, None]:
         """
@@ -346,10 +351,10 @@ class ModelManager:
         if settings.MODEL_BACKEND == "gguf":
             yield from self._chat_completion_stream_gguf(
                 messages=messages,
-                max_tokens=max_tokens or 1024,
-                temperature=temperature or 0.7,
-                top_p=top_p or 0.9,
-                top_k=top_k or 50,
+                max_tokens=max_tokens if max_tokens is not None else settings.DEFAULT_MAX_NEW_TOKENS,
+                temperature=temperature if temperature is not None else settings.DEFAULT_TEMPERATURE,
+                top_p=top_p if top_p is not None else settings.DEFAULT_TOP_P,
+                top_k=top_k if top_k is not None else settings.DEFAULT_TOP_K,
                 repetition_penalty=repetition_penalty or 1.1,
             )
             return
@@ -393,10 +398,10 @@ class ModelManager:
             # Generation kwargs
             generation_kwargs = {
                 **inputs,
-                "max_new_tokens": max_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "top_k": top_k,
+                "max_new_tokens": max_tokens if max_tokens is not None else settings.DEFAULT_MAX_NEW_TOKENS,
+                "temperature": temperature if temperature is not None else settings.DEFAULT_TEMPERATURE,
+                "top_p": top_p if top_p is not None else settings.DEFAULT_TOP_P,
+                "top_k": top_k if top_k is not None else settings.DEFAULT_TOP_K,
                 "do_sample": True,
                 "repetition_penalty": repetition_penalty,
                 "pad_token_id": self.tokenizer.eos_token_id,
@@ -423,10 +428,10 @@ class ModelManager:
     def chat_completion(
         self,
         messages: list[dict],
-        max_tokens: int = 1024,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
-        top_k: int = 50,
+        max_tokens: int = settings.DEFAULT_MAX_NEW_TOKENS,
+        temperature: float = settings.DEFAULT_TEMPERATURE,
+        top_p: float = settings.DEFAULT_TOP_P,
+        top_k: int = settings.DEFAULT_TOP_K,
         repetition_penalty: float = 1.1,
         stream: bool = False,
         stream_options: bool = True,
