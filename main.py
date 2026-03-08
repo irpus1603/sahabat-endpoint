@@ -288,47 +288,63 @@ async def rag_query(request: RAGRequest, api_key: str = Depends(verify_api_key))
     "/v1/chat/completions",
     tags=["Chat Completions"]
 )
-async def chat_completions(request: ChatCompletionRequest, api_key: str = Depends(verify_api_key)):
+async def chat_completions(request: Request, api_key: str = Depends(verify_api_key)):
     """
     OpenAI-compatible chat completions endpoint
-
-    - **model**: Model name (e.g., "Sahabat-AI/gemma2-9b-cpt-sahabatai-v1-instruct")
-    - **messages**: List of messages with role (system/user/assistant) and content
-    - **max_tokens**: Maximum tokens to generate (default: 1024)
-    - **temperature**: Sampling temperature (default: 0.7)
-    - **top_p**: Nucleus sampling (default: 0.9)
-    - **top_k**: Top-k sampling (default: 50)
-    - **stream**: Enable streaming response (default: false)
     """
+    # DEBUG: log raw request body
+    body = await request.body()
+    logger.info(f"RAW REQUEST BODY: {body.decode()}")
+
+    # Parse manually
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON PARSE ERROR: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid JSON: {str(e)}"
+        )
+
+    # Validate with Pydantic
+    try:
+        chat_request = ChatCompletionRequest(**data)
+    except Exception as e:
+        logger.error(f"VALIDATION ERROR: {str(e)}")
+        logger.error(f"FIELDS RECEIVED: {list(data.keys())}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation error: {str(e)}"
+        )
+
     try:
         import uuid
         from datetime import datetime
 
         # Convert Pydantic messages to dict format
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
 
-        # Debug logging
-        logger.info(f"Stream parameter received: {request.stream}")
-        logger.info(f"Stream type: {type(request.stream)}")
+        logger.info(f"Stream parameter received: {chat_request.stream}")
+        logger.info(f"Stream type: {type(chat_request.stream)}")
 
         # Handle streaming
-        if request.stream:
+        if chat_request.stream:
             async def generate_stream():
                 chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
                 try:
                     for token in model_manager.chat_completion_stream(
                         messages=messages,
-                        max_tokens=request.max_tokens,
-                        temperature=request.temperature,
-                        top_p=request.top_p,
-                        top_k=request.top_k,
-                        repetition_penalty=request.repetition_penalty
+                        max_tokens=chat_request.max_tokens,
+                        temperature=chat_request.temperature,
+                        top_p=chat_request.top_p,
+                        top_k=chat_request.top_k,
+                        repetition_penalty=chat_request.repetition_penalty
                     ):
                         chunk = {
                             "id": chunk_id,
                             "object": "chat.completion.chunk",
                             "created": int(datetime.now().timestamp()),
-                            "model": request.model,
+                            "model": chat_request.model,
                             "choices": [
                                 {
                                     "index": 0,
@@ -344,7 +360,7 @@ async def chat_completions(request: ChatCompletionRequest, api_key: str = Depend
                         "id": chunk_id,
                         "object": "chat.completion.chunk",
                         "created": int(datetime.now().timestamp()),
-                        "model": request.model,
+                        "model": chat_request.model,
                         "choices": [
                             {
                                 "index": 0,
@@ -355,6 +371,7 @@ async def chat_completions(request: ChatCompletionRequest, api_key: str = Depend
                     }
                     yield f"data: {json.dumps(final_chunk)}\n\n"
                     yield "data: [DONE]\n\n"
+
                 except Exception as e:
                     logger.error(f"Streaming failed: {str(e)}")
                     error_chunk = {
@@ -377,13 +394,13 @@ async def chat_completions(request: ChatCompletionRequest, api_key: str = Depend
         # Non-streaming response
         result = model_manager.chat_completion(
             messages=messages,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            top_k=request.top_k,
-            repetition_penalty=request.repetition_penalty,
+            max_tokens=chat_request.max_tokens,
+            temperature=chat_request.temperature,
+            top_p=chat_request.top_p,
+            top_k=chat_request.top_k,
+            repetition_penalty=chat_request.repetition_penalty,
             stream=False,
-            stream_options=request.stream_options
+            stream_options=chat_request.stream_options
         )
 
         # Build OpenAI-compatible response
@@ -391,7 +408,7 @@ async def chat_completions(request: ChatCompletionRequest, api_key: str = Depend
             id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
             object="chat.completion",
             created=int(datetime.now().timestamp()),
-            model=request.model,
+            model=chat_request.model,
             choices=[
                 ChatCompletionChoice(
                     index=0,
@@ -411,13 +428,14 @@ async def chat_completions(request: ChatCompletionRequest, api_key: str = Depend
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat completion failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat completion failed: {str(e)}"
         )
-
 
 # Root endpoint
 @app.get("/", tags=["Root"])
