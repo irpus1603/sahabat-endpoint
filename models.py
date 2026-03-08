@@ -4,6 +4,9 @@ Pydantic models for request/response validation
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from enum import Enum
+from config import get_settings
+
+_settings = get_settings()
 
 
 class HealthStatus(str, Enum):
@@ -23,10 +26,10 @@ class HealthResponse(BaseModel):
 class GenerateRequest(BaseModel):
     """Text generation request"""
     prompt: str = Field(..., min_length=1, description="Input prompt for generation")
-    max_new_tokens: Optional[int] = Field(512, ge=1, le=2048, description="Maximum tokens to generate")
-    temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling temperature")
-    top_p: Optional[float] = Field(0.9, ge=0.0, le=1.0, description="Nucleus sampling probability")
-    top_k: Optional[int] = Field(50, ge=0, description="Top-k sampling parameter")
+    max_new_tokens: Optional[int] = Field(_settings.DEFAULT_MAX_NEW_TOKENS, ge=1, le=_settings.MODEL_MAX_LENGTH, description="Maximum tokens to generate")
+    temperature: Optional[float] = Field(_settings.DEFAULT_TEMPERATURE, ge=0.0, le=2.0, description="Sampling temperature")
+    top_p: Optional[float] = Field(_settings.DEFAULT_TOP_P, ge=0.0, le=1.0, description="Nucleus sampling probability")
+    top_k: Optional[int] = Field(_settings.DEFAULT_TOP_K, ge=0, description="Top-k sampling parameter")
     do_sample: Optional[bool] = Field(True, description="Whether to use sampling")
     repetition_penalty: Optional[float] = Field(1.1, ge=1.0, le=2.0, description="Repetition penalty")
     stream: Optional[bool] = Field(False, description="Stream response")
@@ -98,8 +101,8 @@ class RAGRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Query text")
     documents: List[str] = Field(..., min_length=1, description="List of documents to search")
     top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of top documents to retrieve")
-    max_new_tokens: Optional[int] = Field(512, ge=1, le=2048, description="Maximum tokens to generate")
-    temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling temperature")
+    max_new_tokens: Optional[int] = Field(_settings.DEFAULT_MAX_NEW_TOKENS, ge=1, le=_settings.MODEL_MAX_LENGTH, description="Maximum tokens to generate")
+    temperature: Optional[float] = Field(_settings.DEFAULT_TEMPERATURE, ge=0.0, le=2.0, description="Sampling temperature")
 
     class Config:
         json_schema_extra = {
@@ -152,10 +155,10 @@ class ChatCompletionRequest(BaseModel):
         )
     )
     messages: List[ChatMessage] = Field(..., min_length=1, description="List of messages")
-    max_tokens: Optional[int] = Field(1024, ge=1, le=4096, description="Maximum tokens to generate")
-    temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling temperature")
-    top_p: Optional[float] = Field(0.9, ge=0.0, le=1.0, description="Nucleus sampling")
-    top_k: Optional[int] = Field(50, ge=0, description="Top-k sampling")
+    max_tokens: Optional[int] = Field(_settings.DEFAULT_MAX_NEW_TOKENS, ge=1, le=_settings.MODEL_MAX_LENGTH, description="Maximum tokens to generate")
+    temperature: Optional[float] = Field(_settings.DEFAULT_TEMPERATURE, ge=0.0, le=2.0, description="Sampling temperature")
+    top_p: Optional[float] = Field(_settings.DEFAULT_TOP_P, ge=0.0, le=1.0, description="Nucleus sampling")
+    top_k: Optional[int] = Field(_settings.DEFAULT_TOP_K, ge=0, description="Top-k sampling")
     stream: Optional[bool] = Field(False, description="Stream response")
     stream_options: Optional[Any] = Field(None, description="Stream options (pass-through, e.g. {\"include_usage\": true})")
     repetition_penalty: Optional[float] = Field(1.1, ge=1.0, le=2.0, description="Repetition penalty")
