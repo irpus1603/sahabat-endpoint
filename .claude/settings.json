@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \"from config import get_settings; s = get_settings\\(\\); print\\(''MODEL_NAME:'', s.MODEL_NAME\\); print\\(''MODEL_BACKEND:'', s.MODEL_BACKEND\\); print\\(''ENV FILE:'', s.model_config.get\\(''env_file''\\)\\)\")"
+      "Bash(python -c \"from config import get_settings; s = get_settings\\(\\); print\\(''MODEL_NAME:'', s.MODEL_NAME\\); print\\(''MODEL_BACKEND:'', s.MODEL_BACKEND\\); print\\(''ENV FILE:'', s.model_config.get\\(''env_file''\\)\\)\")",
+      "Bash(ssh -o StrictHostKeyChecking=no -p 5617 ubuntu@103.67.43.158 \"ls /home/ubuntu/sahabat/sahabat-endpoint/.env 2>/dev/null && cat /home/ubuntu/sahabat/sahabat-endpoint/.env || echo ''NO .ENV FILE FOUND''\")",
+      "Bash(sshpass -p 'i0w32PH6WaLunCZj' ssh -o StrictHostKeyChecking=no -p 5617 ubuntu@103.67.43.158 \"ls /home/ubuntu/sahabat/sahabat-endpoint/.env 2>/dev/null && echo ''EXISTS'' || echo ''NOT FOUND''; ls /home/ubuntu/sahabat/sahabat-endpoint/\")",
+      "Bash(python3 -c \"import paramiko\")"
     ]
   }
 }

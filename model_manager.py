@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any, Generator
 from threading import Thread
 from config import get_settings
 from logger import setup_logger
+from typing import Optional, Dict, Any, Generator
 
 try:
     from llama_cpp import Llama
@@ -434,7 +435,7 @@ class ModelManager:
         top_k: int = settings.DEFAULT_TOP_K,
         repetition_penalty: float = 1.1,
         stream: bool = False,
-        stream_options: bool = True,
+        stream_options: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Generate chat completion from messages
